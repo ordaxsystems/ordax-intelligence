@@ -21,6 +21,11 @@ jobs:
           node-version: '22'
       - run: npm run ci
       - run: npm run test:compat
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -p 'test_inference_builder_isolation.py' -v
+      - run: python -m unittest discover -s tests/upstream -p 'test_inference_builder.py' -v
       - run: npm run package
       - run: npm run package:verify
       - uses: actions/upload-artifact@v4
