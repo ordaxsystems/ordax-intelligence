@@ -13,7 +13,7 @@ Origem auditada: `ordax-os@45ab6648835744ad8ae85ee617a3b6e8418545e8`.
 | `system/services/intelligence/client-actions.mjs` e `tool-grants.mjs` | RETAIN | OS gateway/permissões |
 | `system/services/intelligence/application-*.mjs`, `profile-content.mjs` e `work-canvas.mjs` | REVIEW | Interfaces/aplicativos/OS, sem migração automática |
 | `system/services/local-ai/probe-supervisor.mjs` | RETAIN | OS Supervisor/health |
-| `system/services/local-ai/model-compatibility.mjs` | REVIEW | Fronteira com inventário de hardware do OS |
+| `system/services/local-ai/model-compatibility.mjs` | EXTRACTED — ainda sem cutover | Avaliação técnica injetando inventário/metrics/modelo do OS |
 | `system/services/local-ai/source-lock.json`, `owner-dev-runtime.sh` e `model-candidate.generated.mjs` | RETAIN | OS release/base/model policy |
 | `bootstrap/local-ai-runtime/build.py` | HANDOFF | Build/artefato assinado do OS até separação verificada |
 | `system/components/{ordax-intelligence,local-ai-service}/runtime.mjs` | RETAIN | Registro de componentes no OS |

@@ -9,3 +9,7 @@ Fonte canônica proposta para o **motor reutilizável de inteligência e inferê
 Consulte `docs/ARCHITECTURE.md`, `docs/MIGRATION.md` e `docs/OWNERSHIP.md` após a preparação do source. Não criar autoridade de Memory, permissões, ações ou atualizador neste repositório.
 
 O contrato público continua `ordax.intelligence/1`, `ordax.model-router/1` e `ordax.local-ai/1`, definido pelo `ordax-os/system/contracts`. Os módulos reutilizáveis são vinculados aos validadores canônicos pelo consumidor; contratos não são duplicados na distribuição deste pacote.
+
+## Artefatos de desenvolvimento
+
+A CI gera um tar determinístico de **source apenas**, com `manifest.json` e recibo SHA-256. Ele não contém motor llama.cpp nem pesos GGUF, não é assinado e não pode ser ativado como componente pelo OS. A avaliação técnica de compatibilidade de hardware/modelo está em `src/local-ai/model-compatibility.mjs`, com entradas canônicas injetadas pelo OS. Veja `docs/ARTIFACTS.md`.
