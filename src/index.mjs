@@ -4,3 +4,4 @@ export { bindIntelligenceContracts } from "./intelligence/runtime.mjs";
 export { bindModelRouterContracts } from "./intelligence/model-router.mjs";
 export { bindLocalAiContracts } from "./local-ai/runtime.mjs";
 export { bindLocalAiStreamContracts } from "./local-ai/completion-stream.mjs";
+export { bindModelCompatibilityContracts } from "./local-ai/model-compatibility.mjs";
