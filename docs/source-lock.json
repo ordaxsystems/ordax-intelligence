@@ -10,7 +10,8 @@
     "src/intelligence/runtime.mjs": "0986d51be6addd1ad0580e148546ef075fd456c9",
     "src/local-ai/runtime.mjs": "8660cb9e0af12f0bd6ea834c69bab0476b469260",
     "src/local-ai/completion-stream.mjs": "f9445e1d223b8ec33eb4b9cb00c0ba3445bd4433",
-    "src/local-ai/model-compatibility.mjs": "6f5a34a47374601f546f25c1b5351ec9376c39bc"
+    "src/local-ai/model-compatibility.mjs": "6f5a34a47374601f546f25c1b5351ec9376c39bc",
+    "tools/inference-builder/build.py": "3f7f4c801f8f0e8010b39af746758e8a55c2ade4"
   },
   "source_tests": {
     "test_intelligence_runtime.mjs": "157f3a37841af15d5845f4f47c02d31f3f3acb02",
@@ -20,7 +21,9 @@
     "test_local_ai_model_rediscovery.mjs": "c65b2d1410d8837f1df6788082b987b35bc65b68",
     "test_local_ai_probe_races.mjs": "33aa6a14e1ae968229972be849025a44e0cae8f3",
     "test_local_ai_response_lifecycle.mjs": "c07ec6082dd4ea08bd5fa06c12ba812f74cbf12e",
-    "test_local_ai_model_compatibility.mjs": "c950dcec6e8a6b36a104907438ca8347380a8b53"
+    "test_local_ai_model_compatibility.mjs": "c950dcec6e8a6b36a104907438ca8347380a8b53",
+    "test_inference_builder.py": "0c8b4a55cba2c6ae42fa0425706939568360e04e"
   },
-  "unsigned_source_artifact_only": true
+  "unsigned_source_artifact_only": true,
+  "builder_cutover": false
 }

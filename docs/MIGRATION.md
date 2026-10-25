@@ -18,6 +18,10 @@ Os adapters OS retidos estão documentados em `docs/OWNERSHIP.md`. `bootstrap/lo
 - Candidate Gate B no OS: montagem de *candidato* Native com wrappers que referenciam o Intelligence externo; prova de porta OS, ausência de acesso implícito a ferramentas e testes de integridade. Não confundir com ativação de um runtime instalado.
 - A Surface visual permanece canônica em `ordax-surface`. Nenhuma dependência Alpine/APK foi introduzida.
 
+## Extração adicional — builder técnico (ainda sem cutover)
+
+O builder original `bootstrap/local-ai-runtime/build.py` foi adaptado para `tools/inference-builder/build.py`. Ele não mantém cópias de `source-lock.json`, licença ou contrato do OS: todas essas entradas são fornecidas explicitamente pelo consumidor. Os testes de contrato vêm do upstream OS pinado. Essa extração **não** desativa o builder ainda usado pelo OS e não demonstra recompilação real de llama.cpp; vide `docs/ENGINE-BUILD.md`.
+
 ## Bloqueadores de conclusão
 
 1. **Coordenar com os owners Surface/Buildroot** e as PRs concorrentes #2242/#2243 antes de modificar o Supervisor, bootstrap USB ou os builders canônicos.

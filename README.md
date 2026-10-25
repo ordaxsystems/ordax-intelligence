@@ -13,3 +13,7 @@ O contrato público continua `ordax.intelligence/1`, `ordax.model-router/1` e `o
 ## Artefatos de desenvolvimento
 
 A CI gera um tar determinístico de **source apenas**, com `manifest.json` e recibo SHA-256. Ele não contém motor llama.cpp nem pesos GGUF, não é assinado e não pode ser ativado como componente pelo OS. A avaliação técnica de compatibilidade de hardware/modelo está em `src/local-ai/model-compatibility.mjs`, com entradas canônicas injetadas pelo OS. Veja `docs/ARTIFACTS.md`.
+
+## Builder técnico de inferência
+
+A preparação de `llama.cpp`/GGUF foi extraída para `tools/inference-builder/build.py`; a seleção, hashes, licença e contrato continuam injetados pelo OS via `--os-source`. O builder ainda não substitui o pipeline canônico de imagem/assinatura do OS; detalhes em `docs/ENGINE-BUILD.md`.
