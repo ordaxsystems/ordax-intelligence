@@ -1,0 +1,23 @@
+{
+  "schema": "ordax.intelligence-source-lock/1",
+  "origin_repo": "ordaxsystems/ordax-os",
+  "origin_commit": "45ab6648835744ad8ae85ee617a3b6e8418545e8",
+  "contracts_owner": "ordaxsystems/ordax-os",
+  "OS_cutover": false,
+  "physical_proof": false,
+  "source_files": {
+    "src/intelligence/model-router.mjs": "22790a2f60b03ff5dea54d17171ad3a6a9dde442",
+    "src/intelligence/runtime.mjs": "0986d51be6addd1ad0580e148546ef075fd456c9",
+    "src/local-ai/runtime.mjs": "8660cb9e0af12f0bd6ea834c69bab0476b469260",
+    "src/local-ai/completion-stream.mjs": "f9445e1d223b8ec33eb4b9cb00c0ba3445bd4433"
+  },
+  "source_tests": {
+    "test_intelligence_runtime.mjs": "157f3a37841af15d5845f4f47c02d31f3f3acb02",
+    "test_model_router_runtime.mjs": "ad24a465947e0a832bd5dde16ef87ec1b9326fad",
+    "test_local_ai_runtime.mjs": "8acea2a05d6cf7dac78369bdfc410c61e9bc1348",
+    "test_local_ai_endpoint_policy.mjs": "9fb7c0415c692bb290d100401ef884d329929aa1",
+    "test_local_ai_model_rediscovery.mjs": "c65b2d1410d8837f1df6788082b987b35bc65b68",
+    "test_local_ai_probe_races.mjs": "33aa6a14e1ae968229972be849025a44e0cae8f3",
+    "test_local_ai_response_lifecycle.mjs": "c07ec6082dd4ea08bd5fa06c12ba812f74cbf12e"
+  }
+}

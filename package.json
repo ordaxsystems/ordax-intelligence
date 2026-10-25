@@ -1,0 +1,20 @@
+{
+  "name": "@ordax/intelligence",
+  "version": "0.1.0-dev.0",
+  "private": true,
+  "type": "module",
+  "description": "Portable Intelligence core with canonical OS contract injection.",
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "scripts": {
+    "check": "node scripts/check-boundaries.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:compat": "node --test tests/upstream/test_*.mjs",
+    "build": "npm run check",
+    "ci": "npm run check && npm test"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
