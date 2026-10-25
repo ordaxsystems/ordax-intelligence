@@ -12,7 +12,7 @@ function visit(path) {
 visit("src");
 for (const file of files) {
   const source = readFileSync(file, "utf8");
-  const executable = source.split("\n").filter(line => !line.startsWith("// Source:")).join("\n");
+  const executable = source.split("\n").filter(line => !line.trimStart().startsWith("// Source:")).join("\n");
   for (const forbidden of ["../../contracts/", "system/services/", "system/contracts/", "node:fs", "node:net", "node:child_process"]) {
     if (executable.includes(forbidden)) throw new Error(`Forbidden private import in ${file}: ${forbidden}`);
   }
