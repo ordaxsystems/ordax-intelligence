@@ -1,3 +1,4 @@
 node_modules/
 _upstream/
+dist/
 .DS_Store

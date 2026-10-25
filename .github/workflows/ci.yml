@@ -21,3 +21,10 @@ jobs:
           node-version: '22'
       - run: npm run ci
       - run: npm run test:compat
+      - run: npm run package
+      - run: npm run package:verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-intelligence-source
+          path: dist/
+          if-no-files-found: error
