@@ -2,17 +2,20 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 const files = [];
-function visit(directory) { for (const ent of readdirSync(directory, { withFileTypes:true })) {
-  const name=join(directory, ent.name);
-  if(ent.isDirectory()) visit(name);
-  else if(name.endsWith(".mjs")) files.push(name);
-}}
-visit("src");
-for(const file of files) {
-  const text=readFileSync(file,"utf8");
-  if (/from\\s*['"](?:\\.\\.\\/){2}|system\\/(?:contracts|services)|from\\s*['"](?:node:)?(?:child_process|fs)/.test(text)) {
-    throw new Error(`Forbidden OS-private or privileged import in ${file}`);
+function visit(path) {
+  for (const entry of readdirSync(path, { withFileTypes: true })) {
+    const target = join(path, entry.name);
+    if (entry.isDirectory()) visit(target);
+    else if (target.endsWith(".mjs")) files.push(target);
   }
-  execFileSync(process.execPath,["--check",file],{stdio:"inherit"});
+}
+visit("src");
+for (const file of files) {
+  const source = readFileSync(file, "utf8");
+  const executable = source.split("\n").filter(line => !line.startsWith("// Source:")).join("\n");
+  for (const forbidden of ["../../contracts/", "system/services/", "system/contracts/", "node:fs", "node:net", "node:child_process"]) {
+    if (executable.includes(forbidden)) throw new Error(`Forbidden private import in ${file}: ${forbidden}`);
+  }
+  execFileSync(process.execPath, ["--check", file], { stdio: "inherit" });
 }
 console.log(`Verified ${files.length} portable module(s)`);

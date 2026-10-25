@@ -1,0 +1,23 @@
+name: Intelligence CI
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  portable-and-compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ordaxsystems/ordax-os
+          ref: 45ab6648835744ad8ae85ee617a3b6e8418545e8
+          path: _upstream/ordax-os
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run ci
+      - run: npm run test:compat
