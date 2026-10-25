@@ -1,0 +1,19 @@
+{
+  "name": "@ordax/intelligence",
+  "version": "0.1.0-dev.0",
+  "private": true,
+  "type": "module",
+  "description": "Portable OrdaX Intelligence core; OS supplies canonical contracts and lifecycle",
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "scripts": {
+    "check": "node scripts/check-boundaries.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "build": "npm run check",
+    "ci": "npm run check && npm test"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
