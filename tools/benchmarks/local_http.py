@@ -15,7 +15,7 @@ import stat
 import statistics
 import time
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from http.client import HTTPConnection
 
 SCHEMA = "ordax.intelligence-local-benchmark/1"
 MAX_RESPONSE_BYTES = 1024 * 1024
@@ -90,17 +90,25 @@ def perform_request(url: str, model: str, prompt: str, key: str, tokens: int, ti
         "temperature": 0,
         "stream": False,
     }, separators=(",", ":")).encode("utf-8")
-    request = Request(url, data=payload, headers={
-        "Content-Type": "application/json", "Authorization": "Bearer " + key,
-    }, method="POST")
+    # Use a direct HTTPConnection, never an environment proxy, URL redirect
+    # handler or third-party transport capable of forwarding the API key.
+    address = urlsplit(url)
+    connection = HTTPConnection("127.0.0.1", address.port, timeout=timeout)
     started = time.perf_counter()
-    with urlopen(request, timeout=timeout) as response:
+    try:
+        connection.request("POST", "/v1/chat/completions", body=payload, headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + key,
+        })
+        response = connection.getresponse()
         if response.status != 200:
             raise BenchmarkError("local backend returned a non-success status")
-        size = response.headers.get("content-length")
+        size = response.getheader("content-length")
         if size and size.isdecimal() and int(size) > MAX_RESPONSE_BYTES:
             raise BenchmarkError("inference response exceeds byte limit")
         raw = response.read(MAX_RESPONSE_BYTES + 1)
+    finally:
+        connection.close()
     elapsed = time.perf_counter() - started
     if len(raw) > MAX_RESPONSE_BYTES:
         raise BenchmarkError("inference response exceeds byte limit")
