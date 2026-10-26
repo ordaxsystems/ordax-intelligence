@@ -59,6 +59,34 @@ function timeoutMs(value, fallback, label) {
   return selected;
 }
 
+// Buffered completion must enforce the same consultative, text-only boundary
+// as the SSE reader. Validating text alone would silently accept tool calls or
+// a truncated answer while reporting a successful inference.
+function validatedBufferedCompletion(payload) {
+  const choices = payload?.choices;
+  if (!Array.isArray(choices) || choices.length !== 1) {
+    throw new Error("Local AI completion is invalid or contains unsupported tool authority");
+  }
+  const choice = choices[0];
+  const message = choice?.message;
+  if (
+    !choice || typeof choice !== "object" || Array.isArray(choice)
+    || (choice.index !== undefined && choice.index !== 0)
+    || (choice.finish_reason !== undefined && choice.finish_reason !== "stop")
+    || !message || typeof message !== "object" || Array.isArray(message)
+    || (message.role !== undefined && message.role !== "assistant")
+    || message.tool_calls !== undefined
+    || message.function_call !== undefined
+    || message.tool_call_id !== undefined
+    || message.refusal !== undefined
+    || choice.tool_calls !== undefined
+    || choice.function_call !== undefined
+  ) {
+    throw new Error("Local AI completion is invalid or contains unsupported tool authority");
+  }
+  return validateLocalAiResponseText(message.content);
+}
+
 function discoveredModelId(value) {
   try {
     return validateLocalAiModelId(value);
@@ -502,7 +530,7 @@ function createLocalAiRuntime({
           ) {
             throw new Error("Local AI completion model identity mismatch");
           }
-          text = validateLocalAiResponseText(payload?.choices?.[0]?.message?.content);
+          text = validatedBufferedCompletion(payload);
         } else {
           text = await fetchWithTimeout(
             fetchImpl, url, options, inferenceTimeout, label, activeControllers,
