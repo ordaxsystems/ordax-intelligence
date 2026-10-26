@@ -21,3 +21,7 @@ A CI gera um tar determinístico de **source apenas**, com `manifest.json` e rec
 ## Builder técnico de inferência
 
 A preparação de `llama.cpp`/GGUF foi extraída para `tools/inference-builder/build.py`; a seleção, hashes, licença e contrato continuam injetados pelo OS via `--os-source`. O builder ainda não substitui o pipeline canônico de imagem/assinatura do OS; detalhes em `docs/ENGINE-BUILD.md`.
+
+## Medição de performance real
+
+O harness [docs/BENCHMARKS.md](docs/BENCHMARKS.md) mede um backend local já ativo com HTTP loopback, latência, tokens/s e observação opcional de CPU/RSS do processo no Linux. Não instala modelo ou motor, não expõe chave e não substitui medições QEMU/Buildroot/hardware. A CI executa apenas testes com servidor-fixture.
