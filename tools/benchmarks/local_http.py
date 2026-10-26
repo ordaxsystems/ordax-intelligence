@@ -10,6 +10,7 @@ import argparse
 from datetime import datetime, timezone
 import json
 import math
+import os
 from pathlib import Path
 import stat
 import statistics
@@ -41,12 +42,23 @@ def completion_url(endpoint: str) -> str:
 
 
 def read_key(path: Path) -> str:
-    if path.is_symlink():
-        raise BenchmarkError("API key file must not be a symlink")
-    info = path.stat()
-    if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
-        raise BenchmarkError("API key file must be private regular file (mode 0600)")
-    key = path.read_text(encoding="utf-8").strip()
+    # O_NOFOLLOW and fstat apply to the *opened descriptor*, preventing
+    # a symlink swap between an existence check and secret-file reading.
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise BenchmarkError("API key must be an accessible non-symlink file") from exc
+    with os.fdopen(descriptor, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
+            raise BenchmarkError("API key file must be private regular file (mode 0600)")
+        raw = handle.read(2050)
+    if len(raw) > 2049:
+        raise BenchmarkError("API key exceeds byte limit")
+    try:
+        key = raw.decode("ascii").strip()
+    except UnicodeDecodeError as exc:
+        raise BenchmarkError("API key encoding is invalid") from exc
     if not 1 <= len(key) <= 2048 or any(ord(ch) < 33 or ord(ch) > 126 for ch in key):
         raise BenchmarkError("API key is invalid")
     return key
@@ -78,7 +90,6 @@ def process_snapshot(pid: int | None) -> dict | None:
 
 
 def os_clock_ticks() -> int:
-    import os
     return os.sysconf("SC_CLK_TCK")
 
 
