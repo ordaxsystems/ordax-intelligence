@@ -38,6 +38,26 @@ A [PR OS #2282](https://github.com/ordaxsystems/ordax-os/pull/2282) integrou o h
 
 A CI independente verifica o commit fixado do OS em `.github/workflows/ci.yml` e executa `npm run test:consumer` contra o **único** `docs/contracts/intelligence-source.json` no checkout de OS. O gate confirma os três ports, os oito Git blobs (arquivo atual e tree do commit referenciado), ancestralidade do pin, flags não ativantes e checkout OS sem alteração local do lock. A revisão do OS é *imutável* em cada execução, mas deve ser deliberadamente reconciliada quando contratos canônicos mudarem; nunca substituir pelo `main` flutuante. Esse gate é source-only, sem afirmar boot, instalação ou assinatura.
 
+## Deadline de inferência: adaptadores HTTP não cooperativos (candidato)
+
+A rotina `src/local-ai/runtime.mjs` precisava esperar que `fetch()`,
+`reader.read()`, `reader.cancel()` ou um adaptador `json()` retornassem após
+`AbortSignal`. Um adaptador defeituoso pode ignorar o cancelamento e manter
+a consulta buffered ou a descoberta de modelo suspensa, mesmo depois do prazo
+estourar. A implementação portátil agora faz `Promise.race` entre **todo o
+trabalho HTTP** (headers e consumo) e o sinal de cancelamento do Supervisor,
+mantendo o mesmo prazo original; o cancelamento do reader é **best effort
+não bloqueante**, com listeners removidos após a operação. Não existe retry
+silencioso ou autorização de ferramentas.
+
+A suíte `tests/upstream/test_local_ai_noncooperative_abort.mjs` exercita
+HTTP sem resposta, leitor preso, `cancel()` que nunca termina, fallback
+`json()` de fixture, `dispose()` e cancelamento isolado da chamada.
+Tudo é testado com adaptadores sem rede externa. Isso não demonstra
+cancelamento de *cálculo* do llama.cpp no servidor, somente encerramento
+local seguro da espera. Como mudou um blob portátil, o consumidor OS precisa
+atualizar o **único source lock** após os gates, sem antecipar o cutover.
+
 ## Bloqueadores de conclusão
 
 1. **Coordenar com os owners Surface/Buildroot** e a PR OS #2243 (aberta/draft na consulta de 2026-10-26) antes de modificar o Supervisor, bootstrap USB ou os builders canônicos. A #2242 também exige revisão de conflitos por arquivo caso seu conteúdo seja reutilizado. O workflow de candidato local-AI na `main` OS ainda inclui uma prova complementar em rootfs Alpine; ela precisa ser substituída por prova da Base Buildroot real antes do cutover, sem enfraquecer o gate.
