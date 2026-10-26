@@ -55,8 +55,7 @@ HTTP sem resposta, leitor preso, `cancel()` que nunca termina, fallback
 `json()` de fixture, `dispose()` e cancelamento isolado da chamada.
 Tudo é testado com adaptadores sem rede externa. Isso não demonstra
 cancelamento de *cálculo* do llama.cpp no servidor, somente encerramento
-local seguro da espera. Como mudou um blob portátil, o consumidor OS precisa
-atualizar o **único source lock** após os gates, sem antecipar o cutover.
+local seguro da espera. O consumidor OS atualizou o **único source lock** na [PR #2293](https://github.com/ordaxsystems/ordax-os/pull/2293), integrada no commit `3eb97a47e93aca294eaaf1e3597b3c98f4aebe0b` após **7/7 gates aprovados**. A CI independente valida agora esse commit exato, sem antecipar o cutover.
 
 ## Bloqueadores de conclusão
 
