@@ -106,7 +106,7 @@ test("a real HTTP buffered response carrying tool calls is rejected, never promo
     json(response, {
       model: MODEL,
       choices: [{
-        finish_reason: "tool_calls",
+        finish_reason: "stop",
         message: {
           role: "assistant",
           content: "Vou executar esta ação",
@@ -134,5 +134,36 @@ test("without a discovered model the real loopback remains unavailable, with no 
   assert.equal((await local.probe()).state, "unavailable");
   await assert.rejects(local.generate({ prompt: "Sem modelo" }), /not ready/);
   assert.equal(completionPosts, 0);
+  local.dispose();
+});
+
+test("a real HTTP response with finish_reason=length is not treated as complete", async (t) => {
+  const endpoint = await loopback(t, (request, response) => {
+    json(response, {
+      model: MODEL,
+      choices: [{ message: { role: "assistant", content: "resultado truncado" }, finish_reason: "length" }],
+    });
+  });
+  const local = createLocalAiRuntime({ endpoint, modelId: MODEL });
+  await local.probe();
+  await assert.rejects(local.generate({ prompt: "Resultado completo" }), /completion.*(invalid|unsupported)/i);
+  assert.equal(local.getSnapshot().state, "ready");
+  local.dispose();
+});
+
+test("a legacy function_call field is not promoted as an authorized answer", async (t) => {
+  const endpoint = await loopback(t, (request, response) => {
+    json(response, {
+      model: MODEL,
+      choices: [{ message: {
+        role: "assistant",
+        content: "ação proposta",
+        function_call: { name: "execute", arguments: "{}" },
+      }, finish_reason: "stop" }],
+    });
+  });
+  const local = createLocalAiRuntime({ endpoint, modelId: MODEL });
+  await local.probe();
+  await assert.rejects(local.generate({ prompt: "Sem ações" }), /completion.*(invalid|unsupported)/i);
   local.dispose();
 });
