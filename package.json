@@ -14,7 +14,8 @@
     "build": "npm run check",
     "ci": "npm run check && npm test",
     "package": "node scripts/package.mjs",
-    "package:verify": "node scripts/package.mjs --verify"
+    "package:verify": "node scripts/package.mjs --verify",
+    "test:consumer": "node scripts/verify-os-consumer-pin.mjs"
   },
   "engines": {
     "node": ">=22.0.0"
