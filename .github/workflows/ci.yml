@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ordaxsystems/ordax-os
-          ref: b1d287b3deb1e3aca9b84d465ccd4d96ca6891a8
+          ref: 6aab0802d40854494610ce2220732fc4256fa337
           path: _upstream/ordax-os
           persist-credentials: false
       - uses: actions/setup-node@v4
