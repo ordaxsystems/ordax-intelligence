@@ -97,9 +97,15 @@ async function readLocalAiCompletionStream(response, { modelId, onDelta, signal 
       throw new Error("Local AI streaming choice is invalid");
     }
     if (!choice.delta || typeof choice.delta !== "object" || Array.isArray(choice.delta)
-      || choice.delta.role && choice.delta.role !== "assistant"
+      || (choice.delta.role !== undefined && choice.delta.role !== "assistant")
       || choice.delta.tool_calls !== undefined
       || choice.delta.function_call !== undefined
+      || choice.delta.tool_call_id !== undefined
+      || choice.delta.refusal !== undefined
+      || choice.tool_calls !== undefined
+      || choice.function_call !== undefined
+      || choice.tool_call_id !== undefined
+      || choice.refusal !== undefined
       || choice.message !== undefined) {
       throw new Error("Local AI streaming accepts assistant text only");
     }
