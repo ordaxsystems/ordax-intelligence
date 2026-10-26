@@ -10,16 +10,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/checkout@v4
         with:
           repository: ordaxsystems/ordax-os
-          ref: 45ab6648835744ad8ae85ee617a3b6e8418545e8
+          ref: 4b4c715cc8b0e7a792da2170e801aefffc1687db
           path: _upstream/ordax-os
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm run ci
+      - run: npm run test:consumer
       - run: npm run test:compat
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
