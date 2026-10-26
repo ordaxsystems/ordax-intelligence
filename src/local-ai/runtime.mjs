@@ -138,9 +138,10 @@ function cancelResponseBody(response) {
   }
 }
 
-async function readBoundedJson(response, maxBytes, label) {
+async function readBoundedJson(response, maxBytes, label, signal = null) {
   const declared = declaredContentLength(response);
   if (declared !== null && declared > maxBytes) {
+    cancelResponseBody(response);
     throw new Error(`${label} exceeds its byte limit`);
   }
 
@@ -148,19 +149,33 @@ async function readBoundedJson(response, maxBytes, label) {
     const reader = response.body.getReader();
     const chunks = [];
     let total = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!(value instanceof Uint8Array)) {
-        try { await reader.cancel(); } catch {}
-        throw new Error(`${label} returned an invalid response body`);
+    let complete = false;
+    // Readers from external Fetch adapters may ignore abort or return a
+    // never-settling cancel() Promise. Cancellation must not hang health.
+    const cancelReader = () => {
+      try { void Promise.resolve(reader.cancel()).catch(() => {}); } catch {}
+    };
+    signal?.addEventListener("abort", cancelReader, { once: true });
+    try {
+      if (signal?.aborted) throw new Error(`${label} was cancelled`);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (signal?.aborted) throw new Error(`${label} was cancelled`);
+        if (done) break;
+        if (!(value instanceof Uint8Array)) {
+          throw new Error(`${label} returned an invalid response body`);
+        }
+        total += value.byteLength;
+        if (total > maxBytes) {
+          throw new Error(`${label} exceeds its byte limit`);
+        }
+        chunks.push(value);
       }
-      total += value.byteLength;
-      if (total > maxBytes) {
-        try { await reader.cancel(); } catch {}
-        throw new Error(`${label} exceeds its byte limit`);
-      }
-      chunks.push(value);
+      complete = true;
+    } finally {
+      signal?.removeEventListener("abort", cancelReader);
+      if (!complete) cancelReader();
+      try { reader.releaseLock(); } catch {}
     }
 
     const bytes = new Uint8Array(total);
@@ -209,12 +224,30 @@ async function fetchWithTimeout(
     if (requestSignal.aborted) abortRequest();
   }
   activeControllers.add(controller);
+  // A nonconforming HTTP adapter may never settle fetch(), reader.read() or
+  // json() after AbortSignal fires. Race the complete operation, not only the
+  // initial HTTP headers, so timeout and dispose remain effective.
+  let rejectAborted;
+  const aborted = new Promise((_, reject) => { rejectAborted = reject; });
+  let activeResponse = null;
+  const rejectOnAbort = () => {
+    rejectAborted(new Error(`${label} aborted`));
+    if (activeResponse !== null) cancelResponseBody(activeResponse);
+  };
+  controller.signal.addEventListener("abort", rejectOnAbort, { once: true });
   const timer = setTimeout(() => controller.abort(), milliseconds);
   try {
     if (controller.signal.aborted) throw new Error("Local AI inference request cancelled");
-    const response = await fetchImpl(url, { ...options, signal: controller.signal });
+    const response = await Promise.race([
+      Promise.resolve().then(() => fetchImpl(url, { ...options, signal: controller.signal })),
+      aborted,
+    ]);
+    activeResponse = response;
     if (controller.signal.aborted) throw new Error("Local AI inference request cancelled");
-    const value = consume === null ? response : await consume(response, controller.signal);
+    const value = consume === null ? response : await Promise.race([
+      Promise.resolve().then(() => consume(response, controller.signal)),
+      aborted,
+    ]);
     // Also reject if an adapter ignores the abort signal and responds late.
     if (controller.signal.aborted) throw new Error("Local AI inference request cancelled");
     return value;
@@ -231,6 +264,7 @@ async function fetchWithTimeout(
     throw error;
   } finally {
     clearTimeout(timer);
+    controller.signal.removeEventListener("abort", rejectOnAbort);
     requestSignal?.removeEventListener("abort", abortRequest);
     activeControllers.delete(controller);
   }
@@ -301,14 +335,14 @@ function createLocalAiRuntime({
     milliseconds,
     label,
     activeControllers,
-    async (response) => {
+    async (response, controllerSignal) => {
       if (!response.ok) {
         cancelResponseBody(response);
         return Object.freeze({ response, payload: null });
       }
       return Object.freeze({
         response,
-        payload: await readBoundedJson(response, maxBytes, `${label} response`),
+        payload: await readBoundedJson(response, maxBytes, `${label} response`, controllerSignal),
       });
     },
     requestSignal,
