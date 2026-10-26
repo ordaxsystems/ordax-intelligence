@@ -167,3 +167,39 @@ test("a legacy function_call field is not promoted as an authorized answer", asy
   await assert.rejects(local.generate({ prompt: "Sem ações" }), /completion.*(invalid|unsupported)/i);
   local.dispose();
 });
+
+test("SSE loopback refuses hidden tool authority, refusal metadata and malformed assistant roles", async (t) => {
+  const forbidden = [
+    ["delta.tool_call_id", choice => { choice.delta.tool_call_id = "call-1"; }],
+    ["delta.refusal", choice => { choice.delta.refusal = "refusal-marker"; }],
+    ["choice.tool_calls", choice => { choice.tool_calls = [{ id: "call-1" }]; }],
+    ["choice.function_call", choice => { choice.function_call = { name: "execute", arguments: "{}" }; }],
+    ["choice.tool_call_id", choice => { choice.tool_call_id = "call-1"; }],
+    ["choice.refusal", choice => { choice.refusal = "refusal-marker"; }],
+    ["invalid role empty", choice => { choice.delta.role = ""; }],
+    ["invalid role null", choice => { choice.delta.role = null; }],
+  ];
+
+  for (const [name, addField] of forbidden) {
+    await t.test(name, async (subtest) => {
+      const endpoint = await loopback(subtest, (request, response) => {
+        const choice = { index: 0, delta: { role: "assistant", content: "texto não autorizado" }, finish_reason: "stop" };
+        addField(choice);
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.end(`data: ${JSON.stringify({ model: MODEL, choices: [choice] })}\n\ndata: [DONE]\n\n`);
+      });
+
+      const local = createLocalAiRuntime({ endpoint, modelId: MODEL });
+      try {
+        await local.probe();
+        const provisional = [];
+        await assert.rejects(local.generate({ prompt: "Somente texto" }, {
+          onDelta: (part) => provisional.push(part),
+        }), /streaming accepts assistant text only/);
+        assert.deepEqual(provisional, []);
+      } finally {
+        local.dispose();
+      }
+    });
+  }
+});

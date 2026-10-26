@@ -1,6 +1,6 @@
 # Migração — gates de corte e proveniência
 
-**Estado verificado em 2026-10-26:** a `main` do `ordax-intelligence` avançou a `957ac6fce5ed7db91ea77d5c0ac899cf41be226f` após a integração das PRs #1, #2, #3, #5 e #6. O `ordax-os` fixa **deliberadamente** o commit anterior `9791ae4734d8f111490fe1ad8e815752b35d661a` pelo único contrato `docs/contracts/intelligence-source.json`; a PR #6 só acrescenta o harness de benchmarks/documentação, sem modificar os oito blobs de fonte consumidos pelo OS. Nunca usar `main` flutuante para a montagem do produto. As 71 regressões anteriores permanecem evidência histórica, não substituem os gates atuais.
+**Estado verificado em 2026-10-26:** a referência canônica de código portátil consumida pelo OS é `ordax-intelligence@b1832239ca11e6ef6e0adf3f5a8c656b9d241fe6`, fixada na `main` do `ordax-os@b1d287b3deb1e3aca9b84d465ccd4d96ca6891a8` após a [PR OS #2282](https://github.com/ordaxsystems/ordax-os/pull/2282) (7/7 pipelines aprovados). O lock registra oito blobs exatos; somente o blob de `src/local-ai/completion-stream.mjs` mudou em relação ao pin anterior `9791ae47`. A `main` do Intelligence pode evoluir em documentação/ferramentas sem alterar esses blobs, mas a montagem do OS **nunca** consome `main` flutuante. O estado segue `integration-candidate`, com ativação e cutover proibidos. As 71 regressões antigas são evidência histórica, não substituem a CI atual.
 
 O `ordax-os` já integrou [PR #2262](https://github.com/ordaxsystems/ordax-os/pull/2262), com `docs/contracts/intelligence-source.json` fixando commit e hashes Git de **oito** arquivos portáveis (sete arquivos de `src/` e `tools/inference-builder/build.py`). O verificador valida Git tree, staging isolado e recibo. A [PR #2263](https://github.com/ordaxsystems/ordax-os/pull/2263) **foi integrada em 2026-10-25** e monta a composição candidata substituindo cinco implementações antigas apenas numa árvore descartável. Nenhuma das duas PRs instala/ativa o motor, altera o boot efetivo ou conclui o cutover. A [PR OS #2277](https://github.com/ordaxsystems/ordax-os/pull/2277) foi **integrada em 2026-10-26** após 7/7 pipelines aprovados, atualizando o source lock para `9791ae4734d8f111490fe1ad8e815752b35d661a` e o hash exato do módulo `src/local-ai/runtime.mjs`. O status permanece `integration-candidate`, com ativação e cutover proibidos.
 
@@ -27,6 +27,12 @@ O builder original `bootstrap/local-ai-runtime/build.py` foi adaptado para `tool
 ## Provas de desempenho para hardware fraco
 
 A ferramenta observacional `tools/benchmarks/local_http.py` registra latência e tokens/s pelo backend HTTP loopback e opcionalmente CPU/RSS via `/proc/PID`, sem controlar instalação ou modelo. Consulte `docs/BENCHMARKS.md`. A CI da [PR Intelligence #6](https://github.com/ordaxsystems/ordax-intelligence/pull/6) aprovou o harness com servidor-fixture e integrou a ferramenta; resultados comparáveis de modelo em **hardware fraco real**, cold-start, memória sistêmica e qualificação de perfis permanecem pendentes.
+
+## Fechamento da fronteira SSE para texto consultivo
+
+A implementação portátil `src/local-ai/completion-stream.mjs` agora recusa `delta.tool_call_id`, `delta.refusal`, campos de autoridade no `choice` e `delta.role` diferente de `assistant` (inclusive vazio/nulo). Antes, alguns desses campos eram ignorados pelo parser SSE, embora a geração buffered já adotasse uma fronteira mais estrita. O teste HTTP loopback em `tests/upstream/test_local_ai_loopback_http.mjs` cobre oito variações e exige ausência de deltas provisórios. Isso **não** autoriza ferramentas, acesso a arquivos ou execução de ações; apenas mantém resposta consultiva e rejeita envelopes inesperados.
+
+A [PR OS #2282](https://github.com/ordaxsystems/ordax-os/pull/2282) integrou o hash exato após aprovar os sete pipelines. A CI `test:consumer` valida agora o lock integrado em `ordax-os@b1d287b3deb1e3aca9b84d465ccd4d96ca6891a8`, sem aceitar fonte flutuante. O source continua `integration-candidate`, sem habilitar cutover, publicação ou boot da Base Buildroot. Mantenha os contratos no OS e os oito blobs no seu único lock.
 
 ## Prevenção de drift entre repositórios
 
