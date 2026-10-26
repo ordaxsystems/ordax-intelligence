@@ -17,7 +17,7 @@ Os adapters OS retidos estão documentados em `docs/OWNERSHIP.md`. `bootstrap/lo
 - Source Gate A no OS: commit Git exato + sete blobs verificados, modo seguro, sem symlinks/código extra, staging em diretório novo e testes negativos.
 - Candidate Gate B no OS: montagem de *candidato* Native com wrappers que referenciam o Intelligence externo; prova de porta OS, ausência de acesso implícito a ferramentas e testes de integridade. Não confundir com ativação de um runtime instalado.
 - A Surface visual permanece canônica em `ordax-surface`. Nenhuma dependência Alpine/APK foi introduzida.
-- **Prova adicional em desenvolvimento nesta branch:** testes de loopback HTTP real (Node servidor-fixture + fetch), cobrindo geração buffered, SSE, cancelamento, ausência de modelo e rejeição de `tool_calls`, `function_call` e `finish_reason=length`. O arquivo `tests/upstream/test_local_ai_loopback_http.mjs` é executado por `npm run test:compat`. A correção correspondente em `src/local-ai/runtime.mjs` harmoniza a validação buffered com as restrições SSE. **Prova ainda não aprovada por CI até que a execução da nova PR seja verificada.** Loopback fixture não equivale a inferência real via llama.cpp.
+- **Prova adicional em desenvolvimento nesta branch:** testes de loopback HTTP real (Node servidor-fixture + fetch), cobrindo geração buffered, SSE, cancelamento, ausência de modelo e rejeição de `tool_calls`, `function_call` e `finish_reason=length`. O arquivo `tests/upstream/test_local_ai_loopback_http.mjs` é executado por `npm run test:compat`. A correção correspondente em `src/local-ai/runtime.mjs` harmoniza a validação buffered com as restrições SSE. **Prova CI aprovada** em [Intelligence CI #40278286189](https://github.com/ordaxsystems/ordax-intelligence/actions/runs/40278286189): Node CI, regressões upstream, testes Python do builder, pacote source-only e sua verificação passaram. Loopback fixture não equivale a inferência real via llama.cpp.
 
 
 ## Extração adicional — builder técnico (ainda sem cutover)
@@ -38,7 +38,7 @@ O builder original `bootstrap/local-ai-runtime/build.py` foi adaptado para `tool
 | Camada | Evidência disponível | Limite |
 | --- | --- | --- |
 | Contratos / fonte portátil | CI anterior e Gate A/B integrados no OS | Sem ativação de serviço instalado |
-| HTTP loopback com servidor-fixture | Novos testes em branch de desenvolvimento, aguardando CI | Sem inferência `llama.cpp` real |
+| HTTP loopback com servidor-fixture | Testes aprovados pela CI #40278286189 (servidor-fixture) | Sem inferência `llama.cpp` real |
 | Motor e modelo locais | Não comprovado nesta migração | Exige binário/peso pinados, ABI e métricas |
 | Buildroot / QEMU / cold-health | Não comprovado para a distribuição final Intelligence | Exige mesmo artefato ativado |
 | USB e hardware físico | Não comprovado | Exige prova em dispositivo e rollback |
