@@ -10,6 +10,10 @@ Consulte `docs/ARCHITECTURE.md`, `docs/MIGRATION.md` e `docs/OWNERSHIP.md` para 
 
 O contrato público continua `ordax.intelligence/1`, `ordax.model-router/1` e `ordax.local-ai/1`, definido pelo `ordax-os/system/contracts`. Os módulos reutilizáveis são vinculados aos validadores canônicos pelo consumidor; contratos não são duplicados na distribuição deste pacote.
 
+## Desenvolvimento e testes
+
+O ponto de entrada de agentes é [AGENTS.md](AGENTS.md). Execute `npm run ci` para o código independente e, após materializar `_upstream/ordax-os` no commit fixado pela CI, execute `npm run test:compat` para os contratos canônicos. O conjunto upstream inclui testes com servidor HTTP **loopback real, mas backend simulado**: SSE, cancelamento e rejeição de campos de ferramentas. Nenhuma dessas provas certifica `llama.cpp`, ABI Buildroot, desempenho, QEMU ou USB físico; confira [docs/MIGRATION.md](docs/MIGRATION.md).
+
 ## Artefatos de desenvolvimento
 
 A CI gera um tar determinístico de **source apenas**, com `manifest.json` e recibo SHA-256. Ele não contém motor llama.cpp nem pesos GGUF, não é assinado e não pode ser ativado como componente pelo OS. A avaliação técnica de compatibilidade de hardware/modelo está em `src/local-ai/model-compatibility.mjs`, com entradas canônicas injetadas pelo OS. Veja `docs/ARTIFACTS.md`.
