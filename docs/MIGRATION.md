@@ -24,6 +24,10 @@ Os adapters OS retidos estão documentados em `docs/OWNERSHIP.md`. `bootstrap/lo
 
 O builder original `bootstrap/local-ai-runtime/build.py` foi adaptado para `tools/inference-builder/build.py`. Ele não mantém cópias de `source-lock.json`, licença ou contrato do OS: todas essas entradas são fornecidas explicitamente pelo consumidor. Os testes de contrato vêm do upstream OS pinado. Essa extração **não** desativa o builder ainda usado pelo OS e não demonstra recompilação real de llama.cpp; vide `docs/ENGINE-BUILD.md`.
 
+## Provas de desempenho para hardware fraco
+
+A ferramenta observacional `tools/benchmarks/local_http.py` registra latência e tokens/s pelo backend HTTP loopback e opcionalmente CPU/RSS via `/proc/PID`, sem controlar instalação ou modelo. Consulte `docs/BENCHMARKS.md`. A CI valida o harness somente com servidor-fixture; resultados de modelo em hardware real, cold-start, memória sistêmica e qualificação de perfis permanecem pendentes e não são inferidos de testes simulados.
+
 ## Bloqueadores de conclusão
 
 1. **Coordenar com os owners Surface/Buildroot** e a PR #2243 (aberta/draft na consulta de 2026-10-26) antes de modificar o Supervisor, bootstrap USB ou os builders canônicos. A #2242 também exige revisão de conflitos por arquivo caso seu conteúdo seja reutilizado.
