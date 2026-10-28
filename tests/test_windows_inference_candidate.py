@@ -21,6 +21,24 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
                 with self.assertRaisesRegex(candidate.canonical.RuntimeBuildError, "native Windows x64"):
                     candidate.assert_windows_x64(system, machine)
 
+    def test_independent_builds_use_exact_clean_source_workspace(self):
+        # Same absolute build path in each independent proof, no reused
+        # objects, no stale sources, and failure rather than sharing a live dir.
+        with tempfile.TemporaryDirectory() as root:
+            cache = pathlib.Path(root) / "model-cache"
+            expected = pathlib.Path(root) / "ordax-windows-inference-native-build"
+            with candidate.fixed_windows_workspace(cache) as first:
+                self.assertEqual(first, expected)
+                self.assertTrue(first.is_dir())
+                (first / "old.obj").write_bytes(b"stale")
+                with self.assertRaisesRegex(candidate.canonical.RuntimeBuildError, "absent and clean"):
+                    with candidate.fixed_windows_workspace(cache):
+                        pass
+            self.assertFalse(expected.exists(), "every independent build must clean all objects")
+            with candidate.fixed_windows_workspace(cache) as second:
+                self.assertEqual(second, expected)
+                self.assertFalse((second / "old.obj").exists())
+
     def test_binary_inventory_rejects_missing_executable_or_dll(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
