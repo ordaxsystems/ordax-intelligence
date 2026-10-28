@@ -65,6 +65,11 @@ def build_windows_engine(lock, work):
         "-DGGML_OPENMP=OFF", "-DGGML_BLAS=OFF",
         "-DGGML_BACKEND_DL=OFF", "-DGGML_BUILD_TESTS=OFF",
         "-DGGML_BUILD_EXAMPLES=OFF",
+        # Link timestamps alone are insufficient: all DLL digests diverged
+        # between independent temp directories while the EXE digest matched.
+        # Normalize MSVC source/debug path records at compile time as well.
+        f"-DCMAKE_C_FLAGS=/pathmap:{work}=C:/ordax-inference",
+        f"-DCMAKE_CXX_FLAGS=/pathmap:{work}=C:/ordax-inference",
         "-DLLAMA_BUILD_NUMBER=0",
         # MSVC otherwise stamps wall-clock link time into PE/COFF headers,
         # changing EXE/DLL digests for identical upstream source revisions.

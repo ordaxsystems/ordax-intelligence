@@ -47,3 +47,10 @@ exigindo identidade exata dos oito pares `nome/tamanho/SHA256`.
 Divergencia reprova CI e nunca altera o source lock automaticamente.
 O OS deve republicar seus pins Windows apenas apos esta prova; a
 distribuicao e ativacao continuam exclusivamente sob a autoridade do OS.
+
+A primeira prova dupla da PR #12 mostrou que `/Brepro` sozinho nao basta:
+`llama-server.exe` permaneceu byte-identico, mas todas as DLLs divergiram
+entre diretorios temporarios diferentes. O compilador MSVC recebe agora
+`/pathmap` para normalizar registros de caminho fonte/debug, alem do linker
+reprodutivel. Este ajuste exige novamente duas builds reais; nenhum hash
+anterior deve ser promovido por aproximacao.
