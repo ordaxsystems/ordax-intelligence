@@ -36,3 +36,46 @@ activates a service and cannot supersede the existing Linux ELF pin.
 The OrdaX OS source lock is the sole authority for any future Windows
 artifact hashes and distribution decision. Do not use CI output directly
 as an executable OrdaX product without an OS-owned versioned trust gate.
+
+### Reprodutibilidade PE (Windows MSVC)
+
+No Windows, o linker MSVC normal gravou o tempo de build no cabecalho PE
+(verificado em `llama-server.exe`). Isso invalida SHA-256 de artefato imutavel.
+O target Windows usa `/Brepro` para executaveis e DLLs e o gate do CI
+executa **duas builds independentes**, cada uma com inferencia GGUF real,
+exigindo identidade exata dos oito pares `nome/tamanho/SHA256`.
+Divergencia reprova CI e nunca altera o source lock automaticamente.
+O OS deve republicar seus pins Windows apenas apos esta prova; a
+distribuicao e ativacao continuam exclusivamente sob a autoridade do OS.
+
+A primeira prova dupla da PR #12 mostrou que `/Brepro` sozinho nao basta:
+`llama-server.exe` permaneceu byte-identico, mas todas as DLLs divergiram
+entre diretorios temporarios diferentes. O compilador MSVC recebe agora
+`/pathmap` para normalizar registros de caminho fonte/debug, alem do linker
+reprodutivel. O log real do run 40644119781 revelou que MSVC ignora `/pathmap` sem
+`/experimental:deterministic` (warning D9007). Ambos os flags agora sao
+passados conjuntamente para C e C++; os hashes so podem ser promovidos
+apos duas builds e duas inferencias reais aprovadas. Nenhum hash anterior
+deve ser promovido por aproximacao.
+
+A CI #40646618487 confirmou a origem da divergência nos hashes das DLLs:
+sete DLLs variavam desde o timestamp/hash do cabeçalho PE, e a inspeção
+binária mostrou caminhos absolutos do workspace temporário embutidos nas
+strings `__FILE__` do próprio código C/C++ do upstream. A geração inicial
+usava diretórios aleatórios diferentes a cada build; isso altera um insumo
+do compilador. O builder agora usa um caminho de fonte/build canônico
+**para cada uma de duas compilações independentes**, apaga integralmente
+objetos/árvore entre elas e reprova se encontrar workspace já existente.
+Continuam obrigatórios o modelo GGUF real, o commit fixado, oito arquivos
+iguais nome/tamanho/SHA-256 e os flags MSVC de determinismo; não é
+normalização posterior, edição de PE nem exceção do gate. Os recibos
+continuam separados e sem autorização de ativação/distribuição.
+
+No Windows, a prova #40648073217 revelou `WinError 5` na exclusão de
+`cache/llama.cpp.git/objects/pack/*.idx` durante o cleanup, após compilar.
+O Git mirror é agora cache de aquisição **verificado pelo mesmo source lock**
+fora da árvore de objetos, não segundo source owner. Cada uma das duas
+compilações continua a fazer checkout de source novo, build novo e exclusão
+integral do workspace canônico; só o mirror Git e o GGUF SHA-verificado
+persistem entre as duas provas. Isso elimina o acoplamento do cleanup do
+build à posse temporária dos packs pelo Git/Windows, sem reaproveitar binários.

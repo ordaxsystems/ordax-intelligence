@@ -21,6 +21,24 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
                 with self.assertRaisesRegex(candidate.canonical.RuntimeBuildError, "native Windows x64"):
                     candidate.assert_windows_x64(system, machine)
 
+    def test_independent_builds_use_exact_clean_source_workspace(self):
+        # Same absolute build path in each independent proof, no reused
+        # objects, no stale sources, and failure rather than sharing a live dir.
+        with tempfile.TemporaryDirectory() as root:
+            cache = pathlib.Path(root) / "model-cache"
+            expected = pathlib.Path(root).resolve() / "ordax-windows-inference-native-build"
+            with candidate.fixed_windows_workspace(cache) as first:
+                self.assertEqual(first, expected)
+                self.assertTrue(first.is_dir())
+                (first / "old.obj").write_bytes(b"stale")
+                with self.assertRaisesRegex(candidate.canonical.RuntimeBuildError, "absent and clean"):
+                    with candidate.fixed_windows_workspace(cache):
+                        pass
+            self.assertFalse(expected.exists(), "every independent build must clean all objects")
+            with candidate.fixed_windows_workspace(cache) as second:
+                self.assertEqual(second, expected)
+                self.assertFalse((second / "old.obj").exists())
+
     def test_binary_inventory_rejects_missing_executable_or_dll(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
@@ -37,11 +55,16 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
         source = (BUILDER_DIR / "windows-candidate.py").read_text(encoding="utf-8")
         self.assertIn("canonical.load_source_lock()", source)
         self.assertIn("canonical.download_exact(", source)
+        self.assertIn('canonical.prepare_engine_mirror(lock, Path(cache_dir) / "source-cache")', source)
         self.assertIn("canonical.prepare_engine_mirror(", source)
         self.assertIn("canonical.checkout_engine(", source)
         self.assertIn("canonical.source_commit()", source)
         self.assertIn('"activation_authorized": False', source)
         self.assertIn('"signed_release": False', source)
+        self.assertIn('"-DCMAKE_EXE_LINKER_FLAGS=/Brepro"', source)
+        self.assertIn('"-DCMAKE_SHARED_LINKER_FLAGS=/Brepro"', source)
+        self.assertIn('f"-DCMAKE_C_FLAGS=/experimental:deterministic /pathmap:{work}=C:/ordax-inference"', source)
+        self.assertIn('f"-DCMAKE_CXX_FLAGS=/experimental:deterministic /pathmap:{work}=C:/ordax-inference"', source)
         self.assertIn('"model_bytes_included": False', source)
         self.assertNotIn("subprocess.run('powershell", source)
         self.assertNotIn("github.com/ggml-org/llama.cpp", source)

@@ -7,6 +7,7 @@ a second source lock, installed service, updater or signed product release.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -16,7 +17,6 @@ import shutil
 import socket
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -47,9 +47,12 @@ def verify_built_files(folder: Path):
     return selected
 
 
-def build_windows_engine(lock, work):
+def build_windows_engine(lock, work, cache_dir):
     work = Path(work)
-    mirror = canonical.prepare_engine_mirror(lock, work / "cache")
+    # Source acquisition cache is independent of compiled objects. On Windows,
+    # Git pack files may remain open briefly; never delete their mirror during
+    # deterministic build workspace cleanup. Checkout is still a fresh tree.
+    mirror = canonical.prepare_engine_mirror(lock, Path(cache_dir) / "source-cache")
     source = work / "llama-source"
     canonical.checkout_engine(lock, mirror, source)
     build_dir = work / "build"
@@ -65,7 +68,17 @@ def build_windows_engine(lock, work):
         "-DGGML_OPENMP=OFF", "-DGGML_BLAS=OFF",
         "-DGGML_BACKEND_DL=OFF", "-DGGML_BUILD_TESTS=OFF",
         "-DGGML_BUILD_EXAMPLES=OFF",
+        # Link timestamps alone are insufficient: all DLL digests diverged
+        # between independent temp directories while the EXE digest matched.
+        # Normalize MSVC source/debug path records at compile time as well.
+        f"-DCMAKE_C_FLAGS=/experimental:deterministic /pathmap:{work}=C:/ordax-inference",
+        f"-DCMAKE_CXX_FLAGS=/experimental:deterministic /pathmap:{work}=C:/ordax-inference",
         "-DLLAMA_BUILD_NUMBER=0",
+        # MSVC otherwise stamps wall-clock link time into PE/COFF headers,
+        # changing EXE/DLL digests for identical upstream source revisions.
+        "-DCMAKE_EXE_LINKER_FLAGS=/Brepro",
+        "-DCMAKE_SHARED_LINKER_FLAGS=/Brepro",
+        "-DCMAKE_MODULE_LINKER_FLAGS=/Brepro",
         f"-DLLAMA_BUILD_COMMIT={commit}",
         f"-DGGML_BUILD_COMMIT={commit}",
     ], env=canonical.deterministic_env())
@@ -170,6 +183,22 @@ def prove_real_offline_inference(binary, model_file, model_id, work):
         key_file.unlink(missing_ok=True)
 
 
+@contextmanager
+def fixed_windows_workspace(cache_dir: Path):
+    # Build path is an input to upstream __FILE__ assertions/log strings.
+    # Reuse one stable absolute source location for each fully independent,
+    # clean compilation, rather than a new randomized TemporaryDirectory.
+    # The output of each build is copied to a separate, immutable receipt.
+    workspace = Path(cache_dir).resolve().parent / "ordax-windows-inference-native-build"
+    if workspace.exists() or workspace.is_symlink():
+        raise canonical.RuntimeBuildError("Windows build workspace must start absent and clean")
+    workspace.mkdir(mode=0o700)
+    try:
+        yield workspace
+    finally:
+        shutil.rmtree(workspace)
+
+
 def prove(os_source, out_dir, cache_dir):
     assert_windows_x64()
     canonical.configure_os_source(os_source)
@@ -178,8 +207,8 @@ def prove(os_source, out_dir, cache_dir):
     if out_dir.exists():
         raise canonical.RuntimeBuildError("Windows proof output must be a new directory")
     cache_dir = Path(cache_dir).resolve()
-    with tempfile.TemporaryDirectory(prefix="ordax-windows-engine-") as temp:
-        folder, files, version = build_windows_engine(lock, temp)
+    with fixed_windows_workspace(cache_dir) as temp:
+        folder, files, version = build_windows_engine(lock, temp, cache_dir)
         model = download_verified_model(lock, cache_dir)
         evidence = prove_real_offline_inference(folder / "llama-server.exe", model, lock["model"]["id"], temp)
         out_dir.mkdir(parents=True, exist_ok=False)
