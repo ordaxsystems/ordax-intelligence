@@ -7,6 +7,7 @@ a second source lock, installed service, updater or signed product release.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -16,7 +17,6 @@ import shutil
 import socket
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -180,6 +180,22 @@ def prove_real_offline_inference(binary, model_file, model_id, work):
         key_file.unlink(missing_ok=True)
 
 
+@contextmanager
+def fixed_windows_workspace(cache_dir: Path):
+    # Build path is an input to upstream __FILE__ assertions/log strings.
+    # Reuse one stable absolute source location for each fully independent,
+    # clean compilation, rather than a new randomized TemporaryDirectory.
+    # The output of each build is copied to a separate, immutable receipt.
+    workspace = Path(cache_dir).resolve().parent / "ordax-windows-inference-native-build"
+    if workspace.exists() or workspace.is_symlink():
+        raise canonical.RuntimeBuildError("Windows build workspace must start absent and clean")
+    workspace.mkdir(mode=0o700)
+    try:
+        yield workspace
+    finally:
+        shutil.rmtree(workspace)
+
+
 def prove(os_source, out_dir, cache_dir):
     assert_windows_x64()
     canonical.configure_os_source(os_source)
@@ -188,7 +204,7 @@ def prove(os_source, out_dir, cache_dir):
     if out_dir.exists():
         raise canonical.RuntimeBuildError("Windows proof output must be a new directory")
     cache_dir = Path(cache_dir).resolve()
-    with tempfile.TemporaryDirectory(prefix="ordax-windows-engine-") as temp:
+    with fixed_windows_workspace(cache_dir) as temp:
         folder, files, version = build_windows_engine(lock, temp)
         model = download_verified_model(lock, cache_dir)
         evidence = prove_real_offline_inference(folder / "llama-server.exe", model, lock["model"]["id"], temp)
