@@ -52,5 +52,8 @@ A primeira prova dupla da PR #12 mostrou que `/Brepro` sozinho nao basta:
 `llama-server.exe` permaneceu byte-identico, mas todas as DLLs divergiram
 entre diretorios temporarios diferentes. O compilador MSVC recebe agora
 `/pathmap` para normalizar registros de caminho fonte/debug, alem do linker
-reprodutivel. Este ajuste exige novamente duas builds reais; nenhum hash
-anterior deve ser promovido por aproximacao.
+reprodutivel. O log real do run 40644119781 revelou que MSVC ignora `/pathmap` sem
+`/experimental:deterministic` (warning D9007). Ambos os flags agora sao
+passados conjuntamente para C e C++; os hashes so podem ser promovidos
+apos duas builds e duas inferencias reais aprovadas. Nenhum hash anterior
+deve ser promovido por aproximacao.
