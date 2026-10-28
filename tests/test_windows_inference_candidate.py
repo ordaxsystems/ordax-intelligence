@@ -26,7 +26,7 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
         # objects, no stale sources, and failure rather than sharing a live dir.
         with tempfile.TemporaryDirectory() as root:
             cache = pathlib.Path(root) / "model-cache"
-            expected = pathlib.Path(root) / "ordax-windows-inference-native-build"
+            expected = pathlib.Path(root).resolve() / "ordax-windows-inference-native-build"
             with candidate.fixed_windows_workspace(cache) as first:
                 self.assertEqual(first, expected)
                 self.assertTrue(first.is_dir())
