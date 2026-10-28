@@ -1,0 +1,50 @@
+name: Windows pinned Local AI engine proof
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/inference-builder/windows-candidate.py'
+      - 'tests/test_windows_inference_candidate.py'
+      - '.github/workflows/windows-inference-candidate.yml'
+permissions:
+  contents: read
+jobs:
+  windows-inference:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # Exact verified OS contract is an input, never cloned from moving main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ordaxsystems/ordax-os
+          ref: c174ecac498c10253b4f467779ea173de6a4edb3
+          path: _upstream/ordax-os
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Verify non-promotable Windows target boundary
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p 'test_windows_inference_candidate.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Windows inference source validation failed' }
+      - name: Compile exact llama.cpp and prove real offline GGUF inference
+        shell: pwsh
+        run: |
+          python tools/inference-builder/windows-candidate.py --os-source _upstream/ordax-os --out-dir "$env:RUNNER_TEMP/ordax-windows-inference-proof" --cache-dir "$env:RUNNER_TEMP/ordax-windows-model-cache"
+          if ($LASTEXITCODE -ne 0) { throw 'Real Windows inference candidate is not proven' }
+          $receipt = Get-Content "$env:RUNNER_TEMP/ordax-windows-inference-proof/candidate-receipt.json" -Raw | ConvertFrom-Json
+          if ($receipt.activation_authorized -ne $false -or $receipt.signed_release -ne $false -or
+              $receipt.proof.real_completion -ne $true -or $receipt.proof.real_model_loaded -ne $true -or
+              $receipt.model_bytes_included -ne $false) {
+            throw 'Unsafe or unproven Windows inference artifact'
+          }
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: unsigned-windows-local-ai-engine-candidate
+          path: ${{ runner.temp }}/ordax-windows-inference-proof/
+          if-no-files-found: error
+          retention-days: 3
