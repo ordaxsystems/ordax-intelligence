@@ -55,6 +55,7 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
         source = (BUILDER_DIR / "windows-candidate.py").read_text(encoding="utf-8")
         self.assertIn("canonical.load_source_lock()", source)
         self.assertIn("canonical.download_exact(", source)
+        self.assertIn('canonical.prepare_engine_mirror(lock, Path(cache_dir) / "source-cache")', source)
         self.assertIn("canonical.prepare_engine_mirror(", source)
         self.assertIn("canonical.checkout_engine(", source)
         self.assertIn("canonical.source_commit()", source)
