@@ -36,3 +36,14 @@ activates a service and cannot supersede the existing Linux ELF pin.
 The OrdaX OS source lock is the sole authority for any future Windows
 artifact hashes and distribution decision. Do not use CI output directly
 as an executable OrdaX product without an OS-owned versioned trust gate.
+
+### Reprodutibilidade PE (Windows MSVC)
+
+No Windows, o linker MSVC normal gravou o tempo de build no cabecalho PE
+(verificado em `llama-server.exe`). Isso invalida SHA-256 de artefato imutavel.
+O target Windows usa `/Brepro` para executaveis e DLLs e o gate do CI
+executa **duas builds independentes**, cada uma com inferencia GGUF real,
+exigindo identidade exata dos oito pares `nome/tamanho/SHA256`.
+Divergencia reprova CI e nunca altera o source lock automaticamente.
+O OS deve republicar seus pins Windows apenas apos esta prova; a
+distribuicao e ativacao continuam exclusivamente sob a autoridade do OS.

@@ -42,6 +42,8 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
         self.assertIn("canonical.source_commit()", source)
         self.assertIn('"activation_authorized": False', source)
         self.assertIn('"signed_release": False', source)
+        self.assertIn('"-DCMAKE_EXE_LINKER_FLAGS=/Brepro"', source)
+        self.assertIn('"-DCMAKE_SHARED_LINKER_FLAGS=/Brepro"', source)
         self.assertIn('"model_bytes_included": False', source)
         self.assertNotIn("subprocess.run('powershell", source)
         self.assertNotIn("github.com/ggml-org/llama.cpp", source)

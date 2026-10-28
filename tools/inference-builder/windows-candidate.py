@@ -66,6 +66,11 @@ def build_windows_engine(lock, work):
         "-DGGML_BACKEND_DL=OFF", "-DGGML_BUILD_TESTS=OFF",
         "-DGGML_BUILD_EXAMPLES=OFF",
         "-DLLAMA_BUILD_NUMBER=0",
+        # MSVC otherwise stamps wall-clock link time into PE/COFF headers,
+        # changing EXE/DLL digests for identical upstream source revisions.
+        "-DCMAKE_EXE_LINKER_FLAGS=/Brepro",
+        "-DCMAKE_SHARED_LINKER_FLAGS=/Brepro",
+        "-DCMAKE_MODULE_LINKER_FLAGS=/Brepro",
         f"-DLLAMA_BUILD_COMMIT={commit}",
         f"-DGGML_BUILD_COMMIT={commit}",
     ], env=canonical.deterministic_env())

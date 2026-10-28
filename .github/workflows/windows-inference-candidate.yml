@@ -42,6 +42,20 @@ jobs:
               $receipt.model_bytes_included -ne $false) {
             throw 'Unsafe or unproven Windows inference artifact'
           }
+      - name: Rebuild independent Windows PE files and reject nonreproducible digests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $previous = Get-Content "$env:RUNNER_TEMP/ordax-windows-inference-proof/candidate-receipt.json" -Raw | ConvertFrom-Json
+          python tools/inference-builder/windows-candidate.py --os-source _upstream/ordax-os --out-dir "$env:RUNNER_TEMP/ordax-windows-inference-proof-second" --cache-dir "$env:RUNNER_TEMP/ordax-windows-model-cache"
+          if ($LASTEXITCODE -ne 0) { throw 'Second Windows pinned inference proof failed' }
+          $again = Get-Content "$env:RUNNER_TEMP/ordax-windows-inference-proof-second/candidate-receipt.json" -Raw | ConvertFrom-Json
+          $firstHashes = @($previous.files | Sort-Object name | ForEach-Object { "$($_.name):$($_.size_bytes):$($_.sha256)" })
+          $secondHashes = @($again.files | Sort-Object name | ForEach-Object { "$($_.name):$($_.size_bytes):$($_.sha256)" })
+          if ($firstHashes.Count -ne 8 -or ($firstHashes -join ';') -cne ($secondHashes -join ';')) {
+            throw 'Pinned Windows EXE/DLL outputs are not byte-reproducible'
+          }
+          Write-Output 'WINDOWS_PE_REBUILD_HASH_EQUIVALENCE=PASS'
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: unsigned-windows-local-ai-engine-candidate
