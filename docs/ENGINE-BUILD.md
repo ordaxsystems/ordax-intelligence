@@ -70,3 +70,12 @@ Continuam obrigatórios o modelo GGUF real, o commit fixado, oito arquivos
 iguais nome/tamanho/SHA-256 e os flags MSVC de determinismo; não é
 normalização posterior, edição de PE nem exceção do gate. Os recibos
 continuam separados e sem autorização de ativação/distribuição.
+
+No Windows, a prova #40648073217 revelou `WinError 5` na exclusão de
+`cache/llama.cpp.git/objects/pack/*.idx` durante o cleanup, após compilar.
+O Git mirror é agora cache de aquisição **verificado pelo mesmo source lock**
+fora da árvore de objetos, não segundo source owner. Cada uma das duas
+compilações continua a fazer checkout de source novo, build novo e exclusão
+integral do workspace canônico; só o mirror Git e o GGUF SHA-verificado
+persistem entre as duas provas. Isso elimina o acoplamento do cleanup do
+build à posse temporária dos packs pelo Git/Windows, sem reaproveitar binários.
