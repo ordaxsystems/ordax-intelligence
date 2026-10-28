@@ -47,9 +47,12 @@ def verify_built_files(folder: Path):
     return selected
 
 
-def build_windows_engine(lock, work):
+def build_windows_engine(lock, work, cache_dir):
     work = Path(work)
-    mirror = canonical.prepare_engine_mirror(lock, work / "cache")
+    # Source acquisition cache is independent of compiled objects. On Windows,
+    # Git pack files may remain open briefly; never delete their mirror during
+    # deterministic build workspace cleanup. Checkout is still a fresh tree.
+    mirror = canonical.prepare_engine_mirror(lock, Path(cache_dir) / "source-cache")
     source = work / "llama-source"
     canonical.checkout_engine(lock, mirror, source)
     build_dir = work / "build"
@@ -205,7 +208,7 @@ def prove(os_source, out_dir, cache_dir):
         raise canonical.RuntimeBuildError("Windows proof output must be a new directory")
     cache_dir = Path(cache_dir).resolve()
     with fixed_windows_workspace(cache_dir) as temp:
-        folder, files, version = build_windows_engine(lock, temp)
+        folder, files, version = build_windows_engine(lock, temp, cache_dir)
         model = download_verified_model(lock, cache_dir)
         evidence = prove_real_offline_inference(folder / "llama-server.exe", model, lock["model"]["id"], temp)
         out_dir.mkdir(parents=True, exist_ok=False)
