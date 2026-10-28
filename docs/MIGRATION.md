@@ -79,3 +79,27 @@ local seguro da espera. O consumidor OS atualizou o **único source lock** na [P
 O consumidor OS **já reconciliou** o source lock e os testes com o commit `9791ae47` após a CI, na PR #2277. Para futuras alterações de módulos fixados, repetir o pin de commit + hashes sob gates equivalentes, sem mudar a autoridade. A transação canônica do Supervisor e os testes de ativação/rollback no artefato Buildroot final continuam obrigatórios; não substituir a implementação ativa apenas porque a CI candidata passou.
 
 **Critério de conclusão:** um único proprietário do código de inferência; serviços e contratos sistêmicos preservados no OS; Consumer Native/Web operando a partir de uma revisão imutável; instalação inicial offline, health e rollback comprovados. Até lá, o status correto é **migração parcial validada, cutover de produção pendente**.
+
+## Windows x64 — alvo técnico de prova, não cutover (2026-10-28)
+
+`tools/inference-builder/windows-candidate.py` é o alvo Windows do builder técnico
+de inferência já extraído: importa diretamente `build.py` para obter **o mesmo**
+`source-lock.json`, commit `llama.cpp`, download exato e SHA-256 do modelo GGUF.
+Não cria uma segunda escolha de engine/modelo, modelo padronizado, API de
+produto, processo de fundo ou atualização de componentes.
+
+A workflow `windows-inference-candidate.yml`, em runner Windows x64,
+compila o commit aprovado com CMake/MSVC; exige a versão executável
+correspondente ao commit exato, biblioteca(s) do build, modelo GGUF
+exatamente validado e uma requisição real `/v1/chat/completions` com
+motor CPU/loopback, chave temporária privada e texto não vazio. Produz
+recebimento com hashes individuais de EXE/DLLs e modelo fixado, além
+de flags **`activation_authorized=false`**, **`signed_release=false`**
+e **`model_bytes_included=false`**. Nunca tratar isso como release.
+
+**Não concluído:** gravar hashes do binário Windows no lock do **OS** após
+prova reproduzível, obter pacote de modelo e motor verificável e
+efetivamente montar o host Electron Native `ordax.local-ai/1` com supervisor,
+segredo não exportado ao renderer, health, cancelamento, atualização e rollback.
+Até esse cutover e o E2E físico do .exe, a Aura Windows deve continuar
+`unavailable` sem fallback online implícito. Não alterar USB Dev #2243.

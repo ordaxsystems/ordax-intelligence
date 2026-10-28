@@ -22,3 +22,17 @@ The CLI cannot silently select a different lock or use a copy within `ordax-inte
 The fast CI runs the adapted OS builder regressions with the exact OS checkout; it proves **lock validation and source-code behavior only**. It does **not** fetch ~563 MB of GGUF or compile llama.cpp and therefore makes no engine ABI, performance or physical run claim.
 
 Before replacing the OS builder, extend the OS `docs/contracts/intelligence-source.json` with this Python source blob and include its hash in the verified cross-repo staging; then switch the single OS image builder in one coordinated cutover, running the existing real pinned-engine build, EROFS, QEMU, signature and rollback tests. Do not keep two builders active and do not create a second source lock, updater, keyring or release authority.
+
+## Windows x64 candidate proof (non-activating)
+
+`python tools/inference-builder/windows-candidate.py --os-source /path/to/exact/ordax-os --out-dir /new/output --cache-dir /cache`
+runs only on a Windows x64 build runner with Visual Studio 2022 CMake support.
+It reuses this repository's existing `build.py` source lock, Git mirror,
+checkout and hash-verified GGUF download. It compiles the same upstream
+`llama.cpp` revision for PE x64, runs a real local CPU completion, then
+records exact EXE/DLL byte hashes in `candidate-receipt.json`. The receipt
+is **unsigned, source-bound evidence only**, excludes model bytes, never
+activates a service and cannot supersede the existing Linux ELF pin.
+The OrdaX OS source lock is the sole authority for any future Windows
+artifact hashes and distribution decision. Do not use CI output directly
+as an executable OrdaX product without an OS-owned versioned trust gate.
