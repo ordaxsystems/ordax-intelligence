@@ -57,3 +57,16 @@ reprodutivel. O log real do run 40644119781 revelou que MSVC ignora `/pathmap` s
 passados conjuntamente para C e C++; os hashes so podem ser promovidos
 apos duas builds e duas inferencias reais aprovadas. Nenhum hash anterior
 deve ser promovido por aproximacao.
+
+A CI #40646618487 confirmou a origem da divergência nos hashes das DLLs:
+sete DLLs variavam desde o timestamp/hash do cabeçalho PE, e a inspeção
+binária mostrou caminhos absolutos do workspace temporário embutidos nas
+strings `__FILE__` do próprio código C/C++ do upstream. A geração inicial
+usava diretórios aleatórios diferentes a cada build; isso altera um insumo
+do compilador. O builder agora usa um caminho de fonte/build canônico
+**para cada uma de duas compilações independentes**, apaga integralmente
+objetos/árvore entre elas e reprova se encontrar workspace já existente.
+Continuam obrigatórios o modelo GGUF real, o commit fixado, oito arquivos
+iguais nome/tamanho/SHA-256 e os flags MSVC de determinismo; não é
+normalização posterior, edição de PE nem exceção do gate. Os recibos
+continuam separados e sem autorização de ativação/distribuição.
