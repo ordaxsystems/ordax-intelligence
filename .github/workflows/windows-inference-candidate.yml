@@ -52,7 +52,14 @@ jobs:
           $again = Get-Content "$env:RUNNER_TEMP/ordax-windows-inference-proof-second/candidate-receipt.json" -Raw | ConvertFrom-Json
           $firstHashes = @($previous.files | Sort-Object name | ForEach-Object { "$($_.name):$($_.size_bytes):$($_.sha256)" })
           $secondHashes = @($again.files | Sort-Object name | ForEach-Object { "$($_.name):$($_.size_bytes):$($_.sha256)" })
-          if ($firstHashes.Count -ne 8 -or ($firstHashes -join ';') -cne ($secondHashes -join ';')) {
+          # Every PE/DLL in the dynamic multi-ISA package must be repeated
+          # byte-identically in a second clean build. The old fixed count of
+          # eight files rejected every correct multi-variant package even when
+          # no binary hash diverged. At least nine mandatory files are checked
+          # by windows-candidate.py; do not silently drop an ISA backend.
+          if ($firstHashes.Count -lt 9 -or
+              $firstHashes.Count -ne $secondHashes.Count -or
+              ($firstHashes -join ';') -cne ($secondHashes -join ';')) {
             # Diagnostico deterministico de bytes PE: nao altera, normaliza
             # nem dispensa um unico hash; falha continua sendo fatal.
             foreach ($original in $previous.files) {

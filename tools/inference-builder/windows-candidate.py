@@ -39,8 +39,18 @@ def verify_built_files(folder: Path):
     if binary.is_symlink() or not binary.is_file():
         raise canonical.RuntimeBuildError("Pinned Windows build did not produce llama-server.exe")
     selected = sorted([binary, *folder.glob("*.dll")], key=lambda p: p.name.lower())
-    if len(selected) < 2:
-        raise canonical.RuntimeBuildError("Windows server runtime libraries are missing")
+    # The pinned source builds ggml CPU backends as separately loadable DLLs.
+    # A baseline x64 build is required for older processors; the AVX and AVX2
+    # variants provide verified runtime dispatch instead of forcing either
+    # unsupported instructions or a permanently scalar release.
+    required = {
+        "llama-server.exe", "llama.dll", "llama-common.dll",
+        "llama-server-impl.dll", "ggml.dll", "ggml-base.dll",
+        "ggml-cpu-x64.dll", "ggml-cpu-sandybridge.dll",
+        "ggml-cpu-haswell.dll",
+    }
+    if not required.issubset({part.name.lower() for part in selected}):
+        raise canonical.RuntimeBuildError("Windows multi-ISA runtime libraries are missing")
     for part in selected:
         if part.is_symlink() or not part.is_file() or part.stat().st_size <= 0:
             raise canonical.RuntimeBuildError("Unsafe Windows inference binary")
@@ -66,7 +76,13 @@ def build_windows_engine(lock, work, cache_dir):
         "-DLLAMA_USE_PREBUILT_UI=OFF", "-DLLAMA_OPENSSL=OFF",
         "-DLLAMA_SUBPROCESS=OFF", "-DGGML_NATIVE=OFF",
         "-DGGML_OPENMP=OFF", "-DGGML_BLAS=OFF",
-        "-DGGML_BACKEND_DL=OFF", "-DGGML_BUILD_TESTS=OFF",
+        # SOURCE_DATE_EPOCH makes GGML_NATIVE_DEFAULT=OFF upstream and leaves
+        # SSE4/AVX disabled when GGML_NATIVE=OFF. The previous one-DLL build
+        # therefore ran scalar on the user's Intel Ivy Bridge CPU. Use the
+        # upstream runtime-selected x64/SSE4/AVX/AVX2 CPU variants: one generic
+        # fallback, no per-machine rebuild, no CPU-specific release fork.
+        "-DBUILD_SHARED_LIBS=ON", "-DGGML_BACKEND_DL=ON",
+        "-DGGML_CPU_ALL_VARIANTS=ON", "-DGGML_BUILD_TESTS=OFF",
         "-DGGML_BUILD_EXAMPLES=OFF",
         # Link timestamps alone are insufficient: all DLL digests diverged
         # between independent temp directories while the EXE digest matched.
@@ -137,7 +153,8 @@ def prove_real_offline_inference(binary, model_file, model_id, work):
     env = dict(os.environ, LLAMA_ARG_API_KEY_FILE=str(key_file))
     args = [str(binary), "--host", "127.0.0.1", "--port", str(port),
             "--model", str(model_file), "--alias", model_id, "--no-ui",
-            "--no-slots", "--reasoning", "off", "-ngl", "0", "-t", "2"]
+            "--no-slots", "--reasoning", "off", "-ngl", "0", "-t", "2",
+            "--ctx-size", "2048", "--parallel", "1"]
     process = subprocess.Popen(args, cwd=str(binary.parent), env=env,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
