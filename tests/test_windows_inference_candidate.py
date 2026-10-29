@@ -47,9 +47,19 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
             (root / "llama-server.exe").write_bytes(b"MZcandidate")
             with self.assertRaisesRegex(candidate.canonical.RuntimeBuildError, "runtime libraries"):
                 candidate.verify_built_files(root)
-            (root / "ggml.dll").write_bytes(b"MZcandidate")
+            for name in (
+                "llama.dll", "llama-common.dll", "llama-server-impl.dll",
+                "ggml.dll", "ggml-base.dll", "ggml-cpu-x64.dll",
+                "ggml-cpu-sandybridge.dll",
+            ):
+                (root / name).write_bytes(b"MZcandidate")
+            with self.assertRaisesRegex(candidate.canonical.RuntimeBuildError, "multi-ISA"):
+                candidate.verify_built_files(root)
+            (root / "ggml-cpu-haswell.dll").write_bytes(b"MZcandidate")
             files = candidate.verify_built_files(root)
-            self.assertEqual([p.name for p in files], ["ggml.dll", "llama-server.exe"])
+            self.assertEqual(len(files), 9)
+            self.assertIn(root / "ggml-cpu-sandybridge.dll", files)
+            self.assertIn(root / "ggml-cpu-haswell.dll", files)
 
     def test_real_proof_must_use_same_os_owned_model_lock_and_no_authority(self):
         source = (BUILDER_DIR / "windows-candidate.py").read_text(encoding="utf-8")
@@ -63,6 +73,15 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
         self.assertIn('"signed_release": False', source)
         self.assertIn('"-DCMAKE_EXE_LINKER_FLAGS=/Brepro"', source)
         self.assertIn('"-DCMAKE_SHARED_LINKER_FLAGS=/Brepro"', source)
+        self.assertIn('"-DBUILD_SHARED_LIBS=ON"', source)
+        self.assertIn('"-DGGML_BACKEND_DL=ON"', source)
+        self.assertIn('"-DGGML_CPU_ALL_VARIANTS=ON"', source)
+        self.assertIn('"-DGGML_NATIVE=OFF"', source)
+        self.assertNotIn('"-DGGML_BACKEND_DL=OFF"', source)
+        self.assertIn('"--ctx-size", "2048", "--parallel", "1"', source)
+        self.assertIn('"ggml-cpu-x64.dll"', source)
+        self.assertIn('"ggml-cpu-sandybridge.dll"', source)
+        self.assertIn('"ggml-cpu-haswell.dll"', source)
         self.assertIn('f"-DCMAKE_C_FLAGS=/experimental:deterministic /pathmap:{work}=C:/ordax-inference"', source)
         self.assertIn('f"-DCMAKE_CXX_FLAGS=/experimental:deterministic /pathmap:{work}=C:/ordax-inference"', source)
         self.assertIn('"model_bytes_included": False', source)
