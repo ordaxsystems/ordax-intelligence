@@ -61,6 +61,15 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
             self.assertIn(root / "ggml-cpu-sandybridge.dll", files)
             self.assertIn(root / "ggml-cpu-haswell.dll", files)
 
+    def test_independent_windows_ci_requires_complete_multivariant_hash_equivalence(self):
+        workflow = (BUILDER_DIR.parents[1] / ".github" / "workflows"
+                    / "windows-inference-candidate.yml").read_text(encoding="utf-8")
+        self.assertIn("$firstHashes.Count -lt 9", workflow)
+        self.assertIn("$firstHashes.Count -ne $secondHashes.Count", workflow)
+        self.assertIn("($firstHashes -join ';') -cne ($secondHashes -join ';')", workflow)
+        self.assertIn("throw 'Pinned Windows EXE/DLL outputs are not byte-reproducible'", workflow)
+        self.assertNotIn("$firstHashes.Count -ne 8", workflow)
+
     def test_real_proof_must_use_same_os_owned_model_lock_and_no_authority(self):
         source = (BUILDER_DIR / "windows-candidate.py").read_text(encoding="utf-8")
         self.assertIn("canonical.load_source_lock()", source)
