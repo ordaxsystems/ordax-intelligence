@@ -114,8 +114,10 @@ export function verifyOsConsumerPin({ sourceRoot = DEFAULT_ROOT, osRoot = DEFAUL
     const entry = execFileSync("git",
       ["-C", sourceRoot, "ls-tree", "-z", lock.source_commit, "--", name],
       { maxBuffer: 1024 * 1024 }).toString("utf8");
-    const match = /^(100644|100755) blob ([0-9a-f]{40})\\t([^\\0]+)\\0$/.exec(entry);
-    assert.ok(match && match[3] === name,
+    const tab = entry.indexOf("\t");
+    const match = /^(100644|100755) blob ([0-9a-f]{40})$/.exec(entry.slice(0, tab));
+    assert.ok(tab > 0 && entry.endsWith("\0") &&
+      entry.slice(tab + 1, -1) === name && match,
       `OS-pinned source is not a regular Git file: ${name}`);
     assert.equal(match[2], lock.source_paths[name],
       `OS-pinned commit tree disagrees with its blob contract: ${name}`);
