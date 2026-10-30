@@ -34,6 +34,24 @@ A implementação portátil `src/local-ai/completion-stream.mjs` agora recusa `d
 
 A [PR OS #2282](https://github.com/ordaxsystems/ordax-os/pull/2282) integrou o hash exato após aprovar os sete pipelines. A CI `test:consumer` valida agora o lock integrado em `ordax-os@b1d287b3deb1e3aca9b84d465ccd4d96ca6891a8`, sem aceitar fonte flutuante. O source continua `integration-candidate`, sem habilitar cutover, publicação ou boot da Base Buildroot. Mantenha os contratos no OS e os oito blobs no seu único lock.
 
+## Evolução independente do source portátil sem ativação implícita
+
+O gate `npm run test:consumer` valida o **commit Git imutável e os oito blobs**
+referenciados pelo lock único do `ordax-os`, não os arquivos de trabalho
+da revisão `HEAD` do Intelligence. A revisão atual do Intelligence continua
+passando por `npm run ci`, regressões de compatibilidade e verificação do pacote
+source-only; uma nova implementação nesta revisão pode avançar sem modificar
+o snapshot antigo que o OS realmente consome.
+
+O gate exige ancestralidade do pin na revisão atual, modo Git regular
+(`100644`/`100755`), bytes/hash exatos no commit fixado, contrato de
+ports e flags de ativação fechadas. Symlinks, submódulos, hashes divergentes
+e alterações locais do lock OS são rejeitados. Atualizar a versão
+efetivamente consumida exige uma PR no OS para promover o **único**
+`docs/contracts/intelligence-source.json` e passar seus gates canônicos;
+nenhuma aprovação desta CI autoriza cutover, publicação, gravação de USB
+ou inferência em hardware real.
+
 ## Prevenção de drift entre repositórios
 
 A CI independente verifica o commit fixado do OS em `.github/workflows/ci.yml` e executa `npm run test:consumer` contra o **único** `docs/contracts/intelligence-source.json` no checkout de OS. O gate confirma os três ports, os oito Git blobs (arquivo atual e tree do commit referenciado), ancestralidade do pin, flags não ativantes e checkout OS sem alteração local do lock. A revisão do OS é *imutável* em cada execução, mas deve ser deliberadamente reconciliada quando contratos canônicos mudarem; nunca substituir pelo `main` flutuante. Esse gate é source-only, sem afirmar boot, instalação ou assinatura.

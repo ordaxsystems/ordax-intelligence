@@ -101,19 +101,31 @@ export function verifyOsConsumerPin({ sourceRoot = DEFAULT_ROOT, osRoot = DEFAUL
   assert.ok(bytes.equals(committed), "OS source lock has uncommitted modifications");
   const lock = assertOsSourceLock(JSON.parse(bytes.toString("utf8")));
 
-  // CI fetches complete Intelligence history so a checkout of a newer
-  // documentation-only revision still proves its OS-pinned ancestor.
+  // Verify the immutable tree the OS actually consumes. Comparing HEAD
+  // working files against an earlier OS pin would incorrectly prohibit
+  // independent Intelligence development before an OS lock promotion.
+  // The current branch has its own CI and package/boundary tests.
   git(sourceRoot, ["cat-file", "-e", `${lock.source_commit}^{commit}`]);
   git(sourceRoot, ["merge-base", "--is-ancestor", lock.source_commit, "HEAD"]);
 
   for (const name of SOURCE_PATHS) {
-    const payload = readFileSync(regularFileUnder(sourceRoot, name));
-    const actualSha = gitBlobSha(payload);
-    assert.equal(actualSha, lock.source_paths[name],
-      `Portable source differs from the exact OS consumer pin: ${name}`);
-    const pinnedBlob = git(sourceRoot, ["rev-parse", `${lock.source_commit}:${name}`]);
-    assert.equal(pinnedBlob, actualSha,
+    // Require a regular Git blob in the pinned commit (not a submodule or
+    // symlink). -z also avoids trusting Git's quoted path presentation.
+    const entry = execFileSync("git",
+      ["-C", sourceRoot, "ls-tree", "-z", lock.source_commit, "--", name],
+      { maxBuffer: 1024 * 1024 }).toString("utf8");
+    const tab = entry.indexOf("\t");
+    const match = /^(100644|100755) blob ([0-9a-f]{40})$/.exec(entry.slice(0, tab));
+    assert.ok(tab > 0 && entry.endsWith("\0") &&
+      entry.slice(tab + 1, -1) === name && match,
+      `OS-pinned source is not a regular Git file: ${name}`);
+    assert.equal(match[2], lock.source_paths[name],
       `OS-pinned commit tree disagrees with its blob contract: ${name}`);
+    const payload = execFileSync("git",
+      ["-C", sourceRoot, "cat-file", "blob", match[2]],
+      { maxBuffer: 16 * 1024 * 1024 });
+    assert.equal(gitBlobSha(payload), lock.source_paths[name],
+      `OS-pinned source bytes differ from its blob contract: ${name}`);
   }
   return Object.freeze({
     sourceCommit: lock.source_commit,
