@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, unlinkSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { assertOsSourceLock, gitBlobSha, SOURCE_PATHS, verifyOsConsumerPin } from "../scripts/verify-os-consumer-pin.mjs";
@@ -135,4 +135,19 @@ test("OS consumer pin refuses uncommitted changes to the OS authority", t => {
   writeFileSync(lockFile, JSON.stringify({ ...lock, status: "canonical" }) + "\n");
   assert.throws(() => verifyOsConsumerPin({ sourceRoot, osRoot }),
     /OS source lock has uncommitted modifications/);
+});
+
+test("OS consumer pin rejects a symlink even when its Git blob is pinned", { skip: process.platform === "win32" }, t => {
+  const { sourceRoot, osRoot, lock, lockFile } = committedPair(t);
+  const file = join(sourceRoot, SOURCE_PATHS[0]);
+  unlinkSync(file);
+  symlinkSync("contract-bindings.mjs", file);
+  commit(sourceRoot, "replace source with symlink");
+  const bad = structuredClone(lock);
+  bad.source_commit = git(sourceRoot, "rev-parse", "HEAD");
+  bad.source_paths[SOURCE_PATHS[0]] = gitBlobSha(Buffer.from("contract-bindings.mjs"));
+  writeFileSync(lockFile, JSON.stringify(bad) + "\n");
+  commit(osRoot, "pin unsafe source mode for regression");
+  assert.throws(() => verifyOsConsumerPin({ sourceRoot, osRoot }),
+    /OS-pinned source is not a regular Git file/);
 });
