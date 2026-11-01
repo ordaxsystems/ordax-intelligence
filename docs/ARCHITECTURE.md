@@ -79,3 +79,11 @@ O balanceamento de contextos em `src/intelligence/runtime.mjs` não deve reserva
 O produtor agora verifica o **custo mínimo viável** da representação JSON escapada de cada item. Quando a distribuição não comporta esse mínimo, o item menos acessível é excluído da distribuição, sua quota é reaproveitada e o cálculo recomeça para os contextos restantes. Empates preservam os primeiros itens na ordem já autorizada pelo OS. Nada é ordenado por `scope=system`, risco ou texto do modelo; os IDs/sources permitidos são definidos a montante. Itens omitidos geram indicação de omissão quando houver orçamento.
 
 Testes de regressão cobrem o pedido de usuário no tamanho máximo canônico, oito contextos com IDs e proveniências enormes e uma projeção verificada de apps que precisa sobreviver. **Otimização estrutural, não recuperação por relevância:** quando o pedido não deixa espaço suficiente nem para um item válido, a limitação é declarada; não existe RAG/autoridade/SSOT novo.
+
+## Continuidade de identidade durante inferência e streaming (INTELLIGENCE-001 F0)
+
+A seleção de rota e a checagem pré-inferência protegem o início de uma chamada Local AI, mas não bastam caso engine/modelo mudem depois de a inferência começar. Conferir apenas `result.engineId` / `result.modelId` no fim também não detecta troca **A → B → A** durante um stream.
+
+O produtor `src/intelligence/runtime.mjs` usa o **mesmo** port/snapshot Local AI injetado pelo OS, sem criar outra autoridade ou gerenciador de modelos. Em cada requisição, observa notificações e fixa um latch de mudança de identidade; também revalida o snapshot ao receber cada delta, após callbacks assíncronos do consumidor e antes de aceitar o resultado. `ready ↔ busy` no mesmo engine/modelo é permitido; mudança de identidade ou perda de prontidão rejeitam a resposta e impedem novos deltas posteriores. O observador temporário é removido em `finally`.
+
+O streaming entrega tokens provisórios. Deltas **já encaminhados antes** de uma troca não podem ser desfeitos por este produtor: a Aura deve tratar a resposta final validada e as proteções Identity/Space do OS como autoridade. A correção evita aceitar silenciosamente resposta antiga e bloqueia novos deltas após detecção, sem provar inferência física no Windows.
