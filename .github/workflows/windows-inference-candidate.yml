@@ -31,7 +31,10 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_windows_inference_candidate.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Windows inference source validation failed' }
+      # The PR gate tests path/authority invariants without two expensive
+      # identical native builds. Full executable/GGUF proof remains explicit.
       - name: Compile exact llama.cpp and prove real offline GGUF inference
+        if: github.event_name == 'workflow_dispatch'
         shell: pwsh
         run: |
           python tools/inference-builder/windows-candidate.py --os-source _upstream/ordax-os --out-dir "$env:RUNNER_TEMP/ordax-windows-inference-proof" --cache-dir "$env:RUNNER_TEMP/ordax-windows-model-cache"
@@ -43,6 +46,7 @@ jobs:
             throw 'Unsafe or unproven Windows inference artifact'
           }
       - name: Rebuild independent Windows PE files and reject nonreproducible digests
+        if: github.event_name == 'workflow_dispatch'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -81,6 +85,7 @@ jobs:
           }
           Write-Output 'WINDOWS_PE_REBUILD_HASH_EQUIVALENCE=PASS'
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: github.event_name == 'workflow_dispatch'
         with:
           name: unsigned-windows-local-ai-engine-candidate
           path: ${{ runner.temp }}/ordax-windows-inference-proof/
