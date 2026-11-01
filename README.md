@@ -8,6 +8,8 @@ A **Aura** é a experiência de conversação (`ordax-surface`/`ordax-apps`); o 
 
 **Plano único desta evolução:** [INTELLIGENCE-001 — Aura com inteligência contextual](docs/plans/INTELLIGENCE-001-AURA-CONTEXTUAL-INTELLIGENCE.md). Ele registra o estado real dos contratos já existentes, fases F0–F5, fronteiras de ownership, critérios de aceite, matriz de regressões e próxima etapa elegível. Todo novo chat/engenheiro deve lê-lo antes de implementar RAG, descoberta de apps ou planejamento de ações.
 
+A F0 já dispõe de [evidência integrada OS/Apps/Memory com inferência simulada](docs/evidence/INTELLIGENCE-001-F0-BASELINE.md); ainda não é uma prova de qualidade ou execução do modelo local.
+
 **Não declarar pronto:** o OS já possui recuperação lexical de memória, manifests semânticos de apps, catálogo/roteador de intents e um contrato de índice vetorial. Entretanto, seu contrato atual informa embeddings e busca vetorial **desativados**; não há prova de um agente geral executando ferramentas via modelo. Esta PR de documentação não autoriza cutover, modelo/engine novo nem altera contratos.
 
 ## Estado da migração
