@@ -237,7 +237,12 @@ def load_source_lock(path=None):
     return lock
 
 
-def source_commit():
+def attest_os_committed_inputs(lock):
+    """Attest the actual OS checkout and exact committed policy/license bytes.
+
+    A commit in a receipt does not prove that manifests read from disk came
+    from that commit. This gate must run before any download or compilation.
+    """
     if ROOT is None:
         raise RuntimeBuildError("canonical OS source must be supplied explicitly")
     actual = run(
@@ -249,7 +254,43 @@ def source_commit():
     declared = os.environ.get("ORDAX_SOURCE_COMMIT", "").strip().lower()
     if declared and (not COMMIT_RE.fullmatch(declared) or declared != actual):
         raise RuntimeBuildError("OrdaX source commit environment differs from checked-out HEAD")
+    git_root = run(
+        ["git", "-C", str(ROOT), "rev-parse", "--show-toplevel"], capture=True,
+    ).stdout.strip()
+    if Path(git_root).resolve(strict=True) != ROOT:
+        raise RuntimeBuildError("OS source must be the root of its own Git checkout")
+
+    for relative in (
+        "system/services/local-ai/source-lock.json",
+        "docs/contracts/local-ai.json",
+        lock["model"]["license_text_path"],
+    ):
+        path = require_os_source_file(ROOT, relative, "OS-owned build inputs")
+        if path.stat().st_size > MAX_LICENSE_BYTES:
+            raise RuntimeBuildError(f"OS-owned build input exceeds its bound: {relative}")
+        entry = run(
+            ["git", "-C", str(ROOT), "ls-tree", "-z", "HEAD", "--", relative],
+            capture=True,
+        ).stdout
+        if not re.fullmatch(
+            r"(?:100644|100755) blob [0-9a-f]{40}\t" + re.escape(relative) + "\x00",
+            entry,
+        ):
+            raise RuntimeBuildError(f"OS-owned build input is not a committed Git blob: {relative}")
+        try:
+            committed = subprocess.run(
+                ["git", "-C", str(ROOT), "show", f"HEAD:{relative}"],
+                check=True, capture_output=True,
+            ).stdout
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise RuntimeBuildError(f"Cannot read committed OS build input: {relative}") from exc
+        if committed != path.read_bytes():
+            raise RuntimeBuildError(f"OS-owned build input differs from committed HEAD: {relative}")
     return actual
+
+
+def source_commit():
+    return attest_os_committed_inputs(load_source_lock())
 
 
 def model_url(lock):
@@ -305,32 +346,6 @@ def download_exact(url, destination, expected_sha256, expected_size):
         part.unlink(missing_ok=True)
         raise RuntimeBuildError(f"download digest mismatch: expected={expected_sha256} actual={actual}")
     part.replace(destination)
-    return destination
-
-
-def download_bounded(url, destination, max_bytes=MAX_LICENSE_BYTES):
-    destination = Path(destination)
-    require_real_directory(destination.parent, "bounded download destination", create=True)
-    if destination.is_symlink() or (destination.exists() and not destination.is_file()):
-        raise RuntimeBuildError("bounded download destination must be a regular file")
-    request = urllib.request.Request(url, headers={"User-Agent": "OrdaX-local-ai-builder/1"})
-    data = bytearray()
-    try:
-        with urllib.request.urlopen(request, timeout=120) as response:
-            while True:
-                chunk = response.read(64 * 1024)
-                if not chunk:
-                    break
-                data.extend(chunk)
-                if len(data) > max_bytes:
-                    raise RuntimeBuildError("bounded download exceeded maximum size")
-    except Exception as exc:
-        if isinstance(exc, RuntimeBuildError):
-            raise
-        raise RuntimeBuildError(f"bounded download failed: {url}: {exc}") from exc
-    if not data:
-        raise RuntimeBuildError("bounded download returned empty content")
-    destination.write_bytes(bytes(data))
     return destination
 
 
@@ -577,6 +592,7 @@ def erofs_identity(path):
 
 def build(out_dir, cache_dir):
     lock = load_source_lock()
+    committed_os_source = attest_os_committed_inputs(lock)
     if platform.system() != "Linux" or platform.machine() not in {"x86_64", "amd64"}:
         raise RuntimeBuildError("local AI build requires x86_64 Linux")
     for program in ("git", "cmake", "ninja", "g++", "readelf", "mkfs.erofs", "fsck.erofs", "blkid"):
@@ -694,7 +710,7 @@ def build(out_dir, cache_dir):
         provenance = {
             "$schema": "prototype-ordax.local-ai-runtime-provenance/1",
             "status": "candidate-not-promotable",
-            "source_commit": source_commit(),
+            "source_commit": committed_os_source,
             "source_lock_sha256": sha256_file(SOURCE_LOCK),
             "engine": {
                 "id": lock["engine"]["id"],
@@ -746,6 +762,7 @@ def build(out_dir, cache_dir):
 
 def verify(out_dir):
     lock = load_source_lock()
+    committed_os_source = attest_os_committed_inputs(lock)
     out_dir = require_real_directory(out_dir, "output directory")
     image = out_dir / "local-ai-runtime.erofs"
     provenance_path = out_dir / "local-ai-runtime-provenance.json"
@@ -764,6 +781,8 @@ def verify(out_dir):
         raise RuntimeBuildError("candidate crossed promotion boundary")
     if provenance.get("source_lock_sha256") != sha256_file(SOURCE_LOCK):
         raise RuntimeBuildError("source-lock binding changed")
+    if provenance.get("source_commit") != committed_os_source:
+        raise RuntimeBuildError("OS source commit differs from verified provenance")
     if provenance.get("model", {}).get("sha256") != lock["model"]["sha256"]:
         raise RuntimeBuildError("model hash pin was lost")
     if provenance.get("model", {}).get("size") != lock["model"]["size_bytes"]:
