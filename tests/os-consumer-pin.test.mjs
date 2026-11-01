@@ -4,7 +4,13 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, unlinkSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { assertOsSourceLock, gitBlobSha, SOURCE_PATHS, verifyOsConsumerPin } from "../scripts/verify-os-consumer-pin.mjs";
+import { assertOsSourceLock, gitBlobSha, pinnedSourceTreePaths, verifyOsConsumerPin } from "../scripts/verify-os-consumer-pin.mjs";
+import { collectPortableSourceFiles } from "../scripts/source-tree.mjs";
+
+const SOURCE_PATHS = Object.freeze([
+  ...collectPortableSourceFiles(),
+  "tools/inference-builder/build.py",
+]);
 
 function fixture() {
   return {
@@ -25,7 +31,8 @@ function fixture() {
 test("OS canonical source lock shape and public ports are accepted without duplicating validators", () => {
   const lock = fixture();
   assert.equal(assertOsSourceLock(lock), lock);
-  assert.equal(SOURCE_PATHS.length, 8);
+  assert.ok(SOURCE_PATHS.includes("src/snapshot-notification.mjs"),
+    "Current portable graph must include the shared snapshot notification dependency");
 });
 
 test("the Git blob digest uses Git header, including binary-safe byte length", () => {
@@ -37,7 +44,7 @@ test("the Git blob digest uses Git header, including binary-safe byte length", (
 test("the lock rejects source graph omissions, additions and hash drift", () => {
   for (const change of [
     lock => { delete lock.source_paths[SOURCE_PATHS[0]]; },
-    lock => { lock.source_paths["src/mirror.mjs"] = "d".repeat(40); },
+    lock => { lock.source_paths["../unsafe.mjs"] = "d".repeat(40); },
     lock => { lock.source_paths[SOURCE_PATHS[0]] = "mutable"; },
     lock => { lock.source_commit = "HEAD"; },
     lock => { lock.materialization_target = "system/services/intelligence"; },
@@ -150,4 +157,59 @@ test("OS consumer pin rejects a symlink even when its Git blob is pinned", { ski
   commit(osRoot, "pin unsafe source mode for regression");
   assert.throws(() => verifyOsConsumerPin({ sourceRoot, osRoot }),
     /OS-pinned source is not a regular Git file/);
+});
+
+
+test("the lock shape permits new safe modules, but the pinned Git tree must contain them", t => {
+  const { sourceRoot, osRoot, lock, lockFile } = committedPair(t);
+  const bad = structuredClone(lock);
+  bad.source_paths["src/missing-module.mjs"] = "a".repeat(40);
+  assert.equal(assertOsSourceLock(bad), bad, "portable graph may evolve");
+  writeFileSync(lockFile, JSON.stringify(bad) + "\n");
+  commit(osRoot, "try to pin an absent source file");
+  assert.throws(() => verifyOsConsumerPin({ sourceRoot, osRoot }),
+    /OS pinned source graph must exactly match immutable Git tree/);
+});
+
+test("OS source pin refuses omitted helper modules even with otherwise valid entrypoints", t => {
+  const { sourceRoot, osRoot, lock, lockFile } = committedPair(t);
+  const bad = structuredClone(lock);
+  delete bad.source_paths["src/snapshot-notification.mjs"];
+  assert.equal(assertOsSourceLock(bad), bad, "required entrypoints alone are not the complete graph");
+  writeFileSync(lockFile, JSON.stringify(bad) + "\n");
+  commit(osRoot, "omit a portable source dependency");
+  assert.throws(() => verifyOsConsumerPin({ sourceRoot, osRoot }),
+    /OS pinned source graph must exactly match immutable Git tree/);
+});
+
+test("immutable Git tree proves a promoted revision with a new portable dependency", t => {
+  const { sourceRoot, osRoot, lock, lockFile } = committedPair(t);
+  const nextPath = "src/intelligence/new-helper.mjs";
+  const bytes = Buffer.from("export const helper = true;\n");
+  writeFileSync(join(sourceRoot, nextPath), bytes);
+  commit(sourceRoot, "add new portable helper");
+  const next = structuredClone(lock);
+  next.source_commit = git(sourceRoot, "rev-parse", "HEAD");
+  next.source_paths[nextPath] = gitBlobSha(bytes);
+  writeFileSync(lockFile, JSON.stringify(next) + "\n");
+  commit(osRoot, "promote pinned source graph including helper");
+  const proof = verifyOsConsumerPin({ sourceRoot, osRoot });
+  assert.equal(proof.sourceCommit, next.source_commit);
+  assert.equal(proof.verifiedFiles, SOURCE_PATHS.length + 1);
+  assert.deepEqual(
+    pinnedSourceTreePaths(sourceRoot, next.source_commit),
+    Object.keys(next.source_paths).sort(),
+  );
+});
+
+test("pinned source rejects extra tracked nonportable files instead of silently omitting them", t => {
+  const { sourceRoot, osRoot, lock, lockFile } = committedPair(t);
+  writeFileSync(join(sourceRoot, "src", "ignored.json"), "{}\n");
+  commit(sourceRoot, "accidentally add a nonportable source file");
+  const bad = structuredClone(lock);
+  bad.source_commit = git(sourceRoot, "rev-parse", "HEAD");
+  writeFileSync(lockFile, JSON.stringify(bad) + "\n");
+  commit(osRoot, "attempt to pin a tree containing an unlisted file");
+  assert.throws(() => verifyOsConsumerPin({ sourceRoot, osRoot }),
+    /Non-portable file in pinned Intelligence source tree/);
 });
