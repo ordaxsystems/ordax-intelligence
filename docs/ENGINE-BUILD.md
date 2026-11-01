@@ -15,7 +15,7 @@ python3 tools/inference-builder/build.py \
   verify --out-dir /tmp/ordax-local-ai-artifact
 ```
 
-The CLI cannot silently select a different lock or use a copy within `ordax-intelligence`. It reads OS manifests and model license through the **explicit** `--os-source` directory, refusing missing or symlinked manifests. It checks the pinned upstream llama.cpp commit, exact static ELF SHA/size, GGUF SHA/size, CPU architecture, license, EROFS image/hash and runtime loopback policy. No credentials, model weights or engine executables belong in this Git repository.
+The CLI cannot silently select a different lock or use a copy within `ordax-intelligence`. It reads OS manifests and model license through the **explicit** `--os-source` directory, refusing missing or symlinked manifests. The `--out-dir` and `--cache-dir` paths must be real, non-symlinked directories with no symlinked parent components, and cannot overlap (including parent/child relationships). `verify` applies the same output-root checks. Cached GGUF files and partial download destinations cannot be symlinks; the cached bare `llama.cpp.git` mirror and its `HEAD` must also be regular, local entries. These checks happen before using network or Git caches, without changing model/engine pins. It checks the pinned upstream llama.cpp commit, exact static ELF SHA/size, GGUF SHA/size, CPU architecture, license, EROFS image/hash and runtime loopback policy. No credentials, model weights or engine executables belong in this Git repository.
 
 ## CI and promotion boundaries
 
