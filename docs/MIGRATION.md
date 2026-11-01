@@ -291,3 +291,9 @@ O produtor passou a instruir o modelo a não afirmar instalação/ausência/capa
 Corrigido o `fairContextBudgets` do Intelligence com validação do **custo mínimo de serialização**: itens com ID/proveniência enormes que não cabem na sua parcela deixam de bloquear orçamento. O valor livre é redistribuído aos contextos remanescentes sem reordenar, elevar `scope=system`, exceder `LOCAL_AI_MAX_PROMPT_CHARS` ou alterar `ordax.intelligence/1`.
 
 Testes com prompt do usuário no limite de 32000 caracteres, contextos de documentos com metadados máximos e catálogo de apps garantem que evidências cabíveis não desapareçam apenas por reservas inúteis. Veja [evidência F0](evidence/INTELLIGENCE-001-F0-BASELINE.md). Isso não faz ranking, indexação, autorização de apps ou execução: o source lock e ativação Windows continuam pertencendo ao OS; a F0 de modelo real permanece parcial.
+
+## INTELLIGENCE-001 F0 — troca de modelo durante inferência (2026-11-01)
+
+Corrigida lacuna no produtor: checar rota e `result.modelId` não detecta mudança temporária de modelo/motor (**A → B → A**) durante a inferência. O Intelligence observa o mesmo port Local AI do OS por requisição e confere identidade antes/depois de streaming e antes da resposta final. Estado `busy` no mesmo modelo é aceito. Um latch registra mudanças intermediárias até a conclusão e a limpeza do observador é garantida.
+
+Testes em `tests/upstream/test_intelligence_runtime.mjs` rejeitam deltas após troca de identidade, validam o ciclo A/B/A, permitem progresso normal e detectam alteração dentro de callback assíncrono. Deltas já entregues permanecem provisórios e não são apagados. Nenhum contrato, source pin OS, backend, instalador ou grant foi alterado. F0 física segue pendente; consulte [evidência F0](evidence/INTELLIGENCE-001-F0-BASELINE.md).
