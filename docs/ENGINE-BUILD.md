@@ -28,7 +28,7 @@ Before replacing the OS builder, extend the OS `docs/contracts/intelligence-sour
 `python tools/inference-builder/windows-candidate.py --os-source /path/to/exact/ordax-os --out-dir /new/output --cache-dir /cache`
 runs only on a Windows x64 build runner with Visual Studio 2022 CMake support.
 It reuses this repository's existing `build.py` source lock, Git mirror,
-checkout and hash-verified GGUF download. It compiles the same upstream
+checkout and hash-verified GGUF download. Before any model acquisition or native compilation, it attests that the OS-owned lock, contract and license are exact committed bytes of the OS checkout. The `--out-dir`, `--cache-dir` and deterministic sibling build workspace must be non-overlapping, real paths; symlinked outputs, cache components and parents are rejected without following them. A source-only PR runs the Windows boundary tests but does not trigger two expensive native compilations; the full real-GGUF and reproducible PE proof is invoked explicitly with `workflow_dispatch` and is required before any OS-owned artifact promotion. It compiles the same upstream
 `llama.cpp` revision for PE x64, runs a real local CPU completion, then
 records exact EXE/DLL byte hashes in `candidate-receipt.json`. The receipt
 is **unsigned, source-bound evidence only**, excludes model bytes, never
@@ -43,7 +43,7 @@ No Windows, o linker MSVC normal gravou o tempo de build no cabecalho PE
 (verificado em `llama-server.exe`). Isso invalida SHA-256 de artefato imutavel.
 O target Windows usa `/Brepro` para executaveis e DLLs e o gate do CI
 executa **duas builds independentes**, cada uma com inferencia GGUF real,
-exigindo identidade exata dos oito pares `nome/tamanho/SHA256`.
+exigindo identidade exata de todos os pares `nome/tamanho/SHA256` (no mínimo nove arquivos obrigatórios).
 Divergencia reprova CI e nunca altera o source lock automaticamente.
 O OS deve republicar seus pins Windows apenas apos esta prova; a
 distribuicao e ativacao continuam exclusivamente sob a autoridade do OS.
@@ -66,7 +66,7 @@ usava diretórios aleatórios diferentes a cada build; isso altera um insumo
 do compilador. O builder agora usa um caminho de fonte/build canônico
 **para cada uma de duas compilações independentes**, apaga integralmente
 objetos/árvore entre elas e reprova se encontrar workspace já existente.
-Continuam obrigatórios o modelo GGUF real, o commit fixado, oito arquivos
+Continuam obrigatórios o modelo GGUF real, o commit fixado, todos os arquivos PE/DLL obrigatórios
 iguais nome/tamanho/SHA-256 e os flags MSVC de determinismo; não é
 normalização posterior, edição de PE nem exceção do gate. Os recibos
 continuam separados e sem autorização de ativação/distribuição.
