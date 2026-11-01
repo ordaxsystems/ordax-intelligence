@@ -1,6 +1,6 @@
 # INTELLIGENCE-001 — Aura com inteligência contextual do OrdaX
 
-**Status:** plano canônico da evolução do **produtor `ordax-intelligence`**, aprovado para documentação; implementação das etapas abaixo **não iniciada por esta PR**.
+**Status:** plano canônico da evolução do **produtor `ordax-intelligence`**. A F0 tem testes integrados com contexto e segurança em fixtures; a qualidade com modelo real e o Windows físico ainda não foram avaliados. Evidência: [F0-BASELINE](../evidence/INTELLIGENCE-001-F0-BASELINE.md). As fases F1–F5 seguem pendentes.
 **Data-base:** 2026-11-01.
 **Escopo deste repositório:** seleção/organização de contexto, raciocínio consultivo, RAG no consumidor e integração do modelo local por portas verificadas.
 **Objetivo:** a Aura compreender os apps realmente disponíveis, estado do OS, documentos, Space/projeto e memória autorizada; propor próximos passos úteis sem inventar capacidades nem obter autoridade por texto do modelo.
