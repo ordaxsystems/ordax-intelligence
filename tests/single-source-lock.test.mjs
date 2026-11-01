@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, unlinkSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, unlinkSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -55,4 +55,35 @@ test("source boundary refuses any first-party duplicate lock", t => {
     unlinkSync(file);
   }
   assert.equal(check(root).status, 0);
+});
+
+
+test("source boundary rejects symlinked source root and nested directories", { skip: process.platform === "win32" }, t => {
+  const root = fixture(t);
+  const external = join(root, "external");
+  mkdirSync(external);
+  writeFileSync(join(external, "injected.mjs"), "import 'node:fs';\n");
+
+  const nested = join(root, "src", "nested");
+  symlinkSync("../external", nested, "dir");
+  let result = check(root);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Source package refuses symbolic links/);
+  unlinkSync(nested);
+
+  rmSync(join(root, "src"), { recursive: true });
+  symlinkSync("external", join(root, "src"), "dir");
+  result = check(root);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Non-regular directory forbidden.*src/);
+});
+
+test("source boundary rejects an empty or missing source tree", t => {
+  const root = fixture(t);
+  unlinkSync(join(root, "src", "portable.mjs"));
+  assert.match(check(root).stderr, /Portable source tree contains no modules/);
+  rmSync(join(root, "src"), { recursive: true });
+  const result = check(root);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /ENOENT/);
 });

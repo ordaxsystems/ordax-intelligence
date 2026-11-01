@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync, unlinkSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -76,4 +76,68 @@ test("source handoff refuses symlinks rather than silently omitting them", { ski
   const result = run(root);
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Source package refuses symbolic links/);
+});
+
+
+test("source package rejects a symlinked portable source root outside the checkout", { skip: process.platform === "win32" }, t => {
+  const root = fixture(t);
+  const external = join(root, "external");
+  mkdirSync(external);
+  writeFileSync(join(external, "external.mjs"), "export const foreign = true;\n");
+  rmSync(join(root, "src"), { recursive: true });
+  symlinkSync("external", join(root, "src"), "dir");
+  const result = run(root);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Non-regular directory forbidden.*src/);
+  assert.equal(existsSync(join(root, "dist", "receipt.json")), false);
+});
+
+test("source package refuses symlinked package metadata", { skip: process.platform === "win32" }, t => {
+  const root = fixture(t);
+  const manifest = join(root, "package.json");
+  const original = readFileSync(manifest);
+  unlinkSync(manifest);
+  writeFileSync(join(root, "package-source.json"), original);
+  symlinkSync("package-source.json", manifest, "file");
+  const result = run(root);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Non-regular file forbidden.*package\.json/);
+});
+
+test("source package refuses symlinked dist output without writing outside", { skip: process.platform === "win32" }, t => {
+  const root = fixture(t);
+  const external = join(root, "external");
+  mkdirSync(external);
+  symlinkSync("external", join(root, "dist"), "dir");
+  const result = run(root);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Non-regular directory forbidden.*dist/);
+  assert.equal(existsSync(join(external, "receipt.json")), false);
+});
+
+test("source package refuses an empty portable source tree", t => {
+  const root = fixture(t);
+  unlinkSync(join(root, "src", "example.mjs"));
+  const result = run(root);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Portable source tree contains no modules/);
+});
+
+
+test("source handoff never follows existing or dangling archive/receipt symlinks", { skip: process.platform === "win32" }, async t => {
+  for (const output of ["receipt.json", "ordax-intelligence-source-test.0.tar"]) {
+    await t.test(output, subtest => {
+      const root = fixture(subtest);
+      mkdirSync(join(root, "dist"));
+      const external = join(root, "external");
+      mkdirSync(external);
+      // A dangling symlink would be missed by existsSync() but is visible
+      // through lstatSync() and would otherwise create a file outside dist.
+      symlinkSync("../external/target", join(root, "dist", output), "file");
+      const result = run(root);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /Non-regular file forbidden/);
+      assert.equal(existsSync(join(external, "target")), false);
+    });
+  }
 });

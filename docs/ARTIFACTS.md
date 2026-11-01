@@ -9,3 +9,9 @@ As dimensões físicas, tempo de resposta, RAM/CPU, integridade da Base, QEMU e 
 ## Integridade do recibo de proveniência
 
 `npm run package:verify` exige identidade **byte a byte** tanto do `.tar` quanto de `dist/receipt.json`, reconstruídos a partir do source atual. Nenhuma alteração em `activationAuthorized`, `kind`, `engineIncluded`, `modelIncluded`, nome, SHA-256, tamanho, campos extras ou serialização do recibo é aceita. Links simbólicos sob `src/` são rejeitados em vez de serem silenciosamente omitidos. Isso é um gate de integridade de desenvolvimento, **não** uma assinatura ou autorização de ativação pelo OS.
+
+## Árvore portátil e isolamento do empacotamento (2026-11-01)
+
+`npm run check` e `npm run package` agora utilizam o mesmo walker `scripts/source-tree.mjs` para enumerar os módulos portáveis. O walker exige que `src/` seja um diretório físico, recusa links simbólicos em qualquer nível e não aceita árvore vazia. O empacotador também exige `package.json` regular e saída `dist/` não simbólica; uma pasta de saída redirecionada não recebe arquivos de handoff. Os caminhos individuais do tar e do recibo também são verificados com `lstat`, inclusive contra links quebrados, antes de qualquer gravação. Esses gates impedem que a entrega source-only incorpore código de um diretório externo ou grave recibos fora do workspace.
+
+A lista de módulos permanece derivada dos arquivos locais, sem copiar o source lock canônico do OS, sem atualizar o modelo/engine e sem transformar a prova em release assinada. Testes negativos dos caminhos e a verificação byte a byte do tar/recibo são executados pela CI portátil.
