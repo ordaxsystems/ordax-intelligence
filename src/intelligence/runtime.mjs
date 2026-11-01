@@ -86,11 +86,51 @@ function fromInference(snapshot) {
   });
 }
 
+// The OS validates item sizes/identity but intentionally permits newlines in
+// document text, IDs and provenance. Keep all context fields inside one
+// physical prompt line so a document cannot forge User request / Intent /
+// additional context headers by inserting a newline. JSON quoting preserves
+// Unicode and source text without allowing raw structural delimiters.
+function quotedContext(value) {
+  return JSON.stringify(value).replace(/[\u0085\u2028\u2029]/gu, char =>
+    "\\u" + char.charCodeAt(0).toString(16).padStart(4, "0"));
+}
+
+function contextLabel(value) {
+  // Retain ordinary OS IDs/provenance in the existing display format, but
+  // escape their brackets/parentheses so they cannot close a label early.
+  return quotedContext(value).slice(1, -1).replace(/[\[\]()]/gu, char =>
+    "\\u" + char.charCodeAt(0).toString(16).padStart(4, "0"));
+}
+
 function contextLineParts(entry) {
   return {
-    prefix: `- [${entry.scope}:${entry.id}] `,
-    suffix: ` (provenance: ${entry.provenance})`,
+    prefix: `- [${entry.scope}:${contextLabel(entry.id)}] `,
+    suffix: ` (provenance: ${contextLabel(entry.provenance)})`,
   };
+}
+
+// Binary search on Unicode code points so truncation never splits a surrogate
+// pair or leaves a dangling JSON escape. Account for *serialized* byte-like
+// character cost, not raw entry.text.length: newline becomes "\\n", quotes
+// and backslashes expand, and the resulting line stays unambiguous.
+function truncatedContextLine(entry, prefix, suffix, remaining) {
+  const characters = Array.from(entry.text);
+  let low = 1;
+  let high = characters.length - 1;
+  let best = null;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const clipped = characters.slice(0, middle).join("");
+    const line = `${prefix}${quotedContext(clipped)} ${CONTEXT_TRUNCATION_MARKER}${suffix}`;
+    if (line.length + 1 <= remaining) {
+      best = clipped.trim() ? line : null;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return best;
 }
 
 function renderRequest(request, route) {
@@ -117,7 +157,7 @@ function renderRequest(request, route) {
 
   for (const entry of request.context) {
     const { prefix, suffix } = contextLineParts(entry);
-    const fullLine = `${prefix}${entry.text}${suffix}`;
+    const fullLine = `${prefix}${quotedContext(entry.text)}${suffix}`;
     const fullCost = fullLine.length + 1;
     if (fullCost <= remaining) {
       lines.push(fullLine);
@@ -125,18 +165,9 @@ function renderRequest(request, route) {
       continue;
     }
 
-    const clippedTextChars = remaining
-      - 1
-      - prefix.length
-      - suffix.length
-      - CONTEXT_TRUNCATION_MARKER.length;
-    if (clippedTextChars > 0) {
-      const clipped = entry.text.slice(0, clippedTextChars).trimEnd();
-      if (clipped) {
-        lines.push(`${prefix}${clipped}${CONTEXT_TRUNCATION_MARKER}${suffix}`);
-      } else if (CONTEXT_OMITTED_MARKER.length + 1 <= remaining) {
-        lines.push(CONTEXT_OMITTED_MARKER);
-      }
+    const clipped = truncatedContextLine(entry, prefix, suffix, remaining);
+    if (clipped !== null) {
+      lines.push(clipped);
     } else if (CONTEXT_OMITTED_MARKER.length + 1 <= remaining) {
       lines.push(CONTEXT_OMITTED_MARKER);
     }

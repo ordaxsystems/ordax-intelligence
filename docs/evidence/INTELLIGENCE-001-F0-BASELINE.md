@@ -98,3 +98,11 @@ Uma regressão do avaliador foi identificada: `requireAny` procurava substrings 
 As rubricas existentes foram estendidas com afirmações contraditórias explícitas: nota já salva sem autorização, comando já executado e `Photo Editor` não instalado. Testes negativos demonstram que esses textos **antes podiam pontuar indevidamente** e agora são rejeitados, sem mudar os IDs dos seis cenários ou a política de privacidade.
 
 **Limite obrigatório:** correspondência lexical não é compreensão semântica. Parafraseamento adversarial, ironia, texto citado e negações complexas ainda exigem avaliação humana ou teste real de modelo; `semanticQualityQualified=false` e `physicalModelAttested=false` permanecem sempre. Esta correção melhora a resistência do canário, **não** comprova a competência da Aura ou do GGUF.
+
+## 7. F0 — escape estrutural e truncamento seguro do contexto (2026-11-01)
+
+A revisão do produtor identificou um defeito concreto: `validateIntelligenceRequest()` no OS aceita campos de contexto com quebras de linha, mas `renderRequest()` no Intelligence os montava como texto bruto. Uma nota, manifesto ou campo `provenance` poderia introduzir linhas falsas `User request:`, `Intent:` ou `- [system:...]` no próprio prompt, sem possuir tal escopo. A correção no produtor usa aspas JSON para o texto, escapes nos metadados e normalização dos separadores de linha; conserva o pedido legítimo no final.
+
+A regressão em `tests/upstream/test_intelligence_runtime.mjs` verifica texto de documento hostil, ID/proveniência com `CR/LF`, `NEL/U+2028/U+2029`, exatamente uma linha física de contexto, um único cabeçalho `User request:`, integridade do pedido, limites de comprimento após serialização, string JSON válida após truncamento e code points Unicode não quebrados. O conjunto F0 existente continua validando o catálogo/Memory do OS com IDs normais. Não há alteração no contrato de memória, na origem dos dados nem no motor.
+
+O escape não comprova segurança semântica do modelo: o texto entre aspas ainda pode conter instruções maliciosas, que devem ser tratadas como **dados não confiáveis**. Não declarar proteção em uma build Windows ou corte de produção antes da integração pelo owner OS e prova física; F0 permanece parcial.

@@ -34,3 +34,7 @@ Atualize **`docs/MIGRATION.md`** (registro de gates, PRs, riscos e próxima etap
 ### Idioma da Aura é autoridade do OS
 
 Ao alterar `src/intelligence/runtime.mjs`, preserve `getLocale` dinâmico **e a injeção** `regionalLocalePreference.validate` do OS em `bindIntelligenceContracts`. Nunca inferir o idioma pelo prompt, sistema hospedeiro ou cache local, nem criar uma segunda chave `regional.locale`. O consumidor que fornece `getLocale` sem validador regional falha fechado; sem getter a API continua compatível. Os testes em `tests/upstream/test_intelligence_runtime.mjs` cobrem mudança de idioma na sessão e valor malicioso, com fonte canônica `_upstream/ordax-os/system/services/preferences/regional.mjs`. O cutover de bindings e remoção do runtime antigo são tarefas do owner OS, não deste repositório.
+
+### Contexto da Aura: delimitação estrutural no produtor
+
+O `src/intelligence/runtime.mjs` só recebe contextos previamente autorizados pelo OS. Sua serialização **nunca** deve incorporar `text`, `id` ou `provenance` como linhas de prompt brutas: preservar JSON strings de linha única, IDs/proveniências escapados e orçamento de input medido após escape/truncamento Unicode seguro. Qualquer mudança no rendering exige regressão adversarial em `tests/upstream/test_intelligence_runtime.mjs` para `User request:`, `Intent:`, labels falsificadas, `CR/LF/NEL/U+2028/U+2029`, preservação do pedido real e limites do modelo. O modelo continua consultivo, e o OS é o único owner de escopo/autorizações.
