@@ -8,16 +8,16 @@ import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { resolve, join, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const SOURCE_PATHS = Object.freeze([
+// Git's immutable tree, not a maintained list in this producer, defines the
+// portable source graph. Keep only the indispensable public entrypoints and
+// the distinct engine builder as minimum constraints.
+const BUILDER_PATH = "tools/inference-builder/build.py";
+const REQUIRED_PATHS = Object.freeze([
   "src/index.mjs",
   "src/contract-bindings.mjs",
-  "src/intelligence/runtime.mjs",
-  "src/intelligence/model-router.mjs",
-  "src/local-ai/runtime.mjs",
-  "src/local-ai/completion-stream.mjs",
-  "src/local-ai/model-compatibility.mjs",
-  "tools/inference-builder/build.py",
+  BUILDER_PATH,
 ]);
+const PORTABLE_PATH = /^src\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.mjs$/;
 const EXPECTED_PORTS = Object.freeze([
   "ordax.intelligence/1",
   "ordax.model-router/1",
@@ -58,16 +58,41 @@ export function assertOsSourceLock(lock) {
   assert.equal(lock.cutover_complete, false);
   assert.ok(lock.source_paths && typeof lock.source_paths === "object"
     && !Array.isArray(lock.source_paths));
-  assert.deepEqual(Object.keys(lock.source_paths).sort(), [...SOURCE_PATHS].sort(),
-    "OS pinned source graph does not match the portable Intelligence source graph");
-  for (const path of SOURCE_PATHS) assert.match(lock.source_paths[path], SHA40,
-    `Missing exact Git blob hash for ${path}`);
+  const paths = Object.keys(lock.source_paths);
+  for (const path of REQUIRED_PATHS) {
+    assert.ok(Object.hasOwn(lock.source_paths, path),
+      `Required OS source path missing: ${path}`);
+  }
+  for (const path of paths) {
+    assert.ok(path === BUILDER_PATH || PORTABLE_PATH.test(path),
+      `Unsafe or unexpected OS source path: ${path}`);
+    assert.match(lock.source_paths[path], SHA40,
+      `Missing exact Git blob hash for ${path}`);
+  }
   return lock;
 }
 
 function git(cwd, args) {
   return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+// Obtain the exact graph from the pinned commit, not current HEAD: an OS
+// consumer may intentionally remain on a previously validated revision.
+// Every tracked file under src/ must be a portable module in the source lock.
+export function pinnedSourceTreePaths(sourceRoot, pinnedCommit) {
+  assert.match(pinnedCommit, SHA40);
+  const tree = execFileSync("git",
+    ["-C", sourceRoot, "ls-tree", "-r", "-z", "--name-only",
+      pinnedCommit, "--", "src"],
+    { maxBuffer: 8 * 1024 * 1024 });
+  const paths = tree.toString("utf8").split("\0").filter(Boolean);
+  assert.ok(paths.length > 0, "Pinned Intelligence source tree is empty");
+  for (const path of paths) {
+    assert.match(path, PORTABLE_PATH,
+      `Non-portable file in pinned Intelligence source tree: ${path}`);
+  }
+  return [...paths, BUILDER_PATH].sort();
 }
 
 function regularFileUnder(root, name) {
@@ -108,7 +133,10 @@ export function verifyOsConsumerPin({ sourceRoot = DEFAULT_ROOT, osRoot = DEFAUL
   git(sourceRoot, ["cat-file", "-e", `${lock.source_commit}^{commit}`]);
   git(sourceRoot, ["merge-base", "--is-ancestor", lock.source_commit, "HEAD"]);
 
-  for (const name of SOURCE_PATHS) {
+  const pinnedPaths = pinnedSourceTreePaths(sourceRoot, lock.source_commit);
+  assert.deepEqual(Object.keys(lock.source_paths).sort(), pinnedPaths,
+    "OS pinned source graph must exactly match immutable Git tree");
+  for (const name of pinnedPaths) {
     // Require a regular Git blob in the pinned commit (not a submodule or
     // symlink). -z also avoids trusting Git's quoted path presentation.
     const entry = execFileSync("git",
@@ -130,7 +158,7 @@ export function verifyOsConsumerPin({ sourceRoot = DEFAULT_ROOT, osRoot = DEFAUL
   return Object.freeze({
     sourceCommit: lock.source_commit,
     osCommit: git(osRoot, ["rev-parse", "HEAD"]),
-    verifiedFiles: SOURCE_PATHS.length,
+    verifiedFiles: pinnedPaths.length,
     status: lock.status,
     activationAuthorized: false,
   });
