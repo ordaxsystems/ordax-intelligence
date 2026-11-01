@@ -1,5 +1,6 @@
 import { requireContractPort } from "../contract-bindings.mjs";
 import { bindModelRouterContracts } from "./model-router.mjs";
+import { notifySnapshotListeners } from "../snapshot-notification.mjs";
 
 export function bindIntelligenceContracts({ intelligence, localAi, modelRouter } = {}) {
   requireContractPort("intelligence",intelligence,"INTELLIGENCE_PORT_SCHEMA","ordax.intelligence/1",["validateIntelligenceRequest","validateIntelligenceResponse","validateIntelligenceSnapshot"]);
@@ -129,7 +130,7 @@ function createIntelligenceRuntime({ inferencePort, modelRouterPort = null } = {
   const publish = (next) => {
     if (destroyed) return;
     snapshot = fromInference(next);
-    for (const listener of [...listeners]) listener(snapshot);
+    notifySnapshotListeners(listeners, snapshot);
   };
   const unsubscribeInference = inference.subscribe(publish);
 
