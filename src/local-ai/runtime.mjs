@@ -73,7 +73,8 @@ function validatedBufferedCompletion(payload) {
   if (
     !choice || typeof choice !== "object" || Array.isArray(choice)
     || (choice.index !== undefined && choice.index !== 0)
-    || (choice.finish_reason !== undefined && choice.finish_reason !== "stop")
+    // Without a terminal stop marker, buffered text has not been verified as complete.
+    || choice.finish_reason !== "stop"
     || !message || typeof message !== "object" || Array.isArray(message)
     || (message.role !== undefined && message.role !== "assistant")
     || message.tool_calls !== undefined
