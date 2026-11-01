@@ -95,3 +95,9 @@ A identidade do motor/modelo deve permanecer estável **até o último instante 
 `src/intelligence/runtime.mjs` agora prepara `inferenceInput`, consulta novamente `inference.getSnapshot()` e verifica **antes de `inference.generate`**: `state === ready`, `engineId`/`modelId` idênticos à rota validada e latch de mudanças intermediárias não acionado. Se qualquer condição falhar, o pedido é rejeitado sem encaminhar prompt/contexto ao motor. A validação de deltas e do resultado final permanece independente, e a autoridade do estado é **o port Local AI injetado pelo OS**, não uma segunda fonte de modelo no Intelligence.
 
 Os testes com o validador regional real do checkout OS verificam mudança de modelo durante `getLocale`, troca **A → B → A** e backend que fica `busy` durante a montagem. Acesso ao modelo físico, source pin, ciclo de vida do OS e dados autorizados continuam sendo responsabilidades do OS; a regressão é com port simulado e não comprova qualidade de GGUF.
+
+## Cancelamento e descarte na última janela pré-inferência
+
+A preparação do prompt usa o getter regional do OS e o snapshot final de Local AI. Ambos ocorrem depois do primeiro preflight; além de mudanças de identidade e prontidão, podem ocorrer **cancelamento síncrono da solicitação** ou **descarte do Intelligence**. Portanto, o port `inference.generate()` só é chamado após verificar novamente `assertAlive()` e o mesmo `AbortSignal` do solicitante, depois da montagem de input e do último snapshot.
+
+A regra não cria gerenciador de cancelamento nem substitui a validação do transporte. O objetivo é não entregar contexto autorizado a um adaptador que ignore cancelamento enquanto o pedido já está encerrado. Testes contra ports simulados provam o gate local; nenhum desses resultados equivale a execução de um modelo físico ou atualização instalada do OrdaX OS.
