@@ -477,6 +477,10 @@ function createLocalAiRuntime({
         && activityAtStart === activityRevision
       );
       let refreshedDynamicIdentity = configuredModelId !== null;
+      // Discovery is provisional until health and probe revision are verified.
+      // Publishing a new model ID early would let concurrent inference send
+      // a prompt under the previous ready snapshot to an unverified model.
+      let candidateModelId = activeModelId;
       try {
         if (configuredModelId === null) {
           const discovered = await discoverModel("Local AI model discovery");
@@ -493,7 +497,7 @@ function createLocalAiRuntime({
             });
             return snapshot;
           }
-          activeModelId = discovered;
+          candidateModelId = discovered;
           refreshedDynamicIdentity = true;
         }
 
@@ -508,6 +512,7 @@ function createLocalAiRuntime({
           "Local AI health probe",
         );
         if (!probeIsCurrent()) return snapshot;
+        if (configuredModelId === null) activeModelId = candidateModelId;
         publish({
           schema: LOCAL_AI_PORT_SCHEMA,
           state: response.ok ? "ready" : "error",
@@ -520,6 +525,7 @@ function createLocalAiRuntime({
         if (destroyed) throw error;
         if (!probeIsCurrent()) return snapshot;
         if (configuredModelId === null && !refreshedDynamicIdentity) {
+          activeModelId = null;
           publish({
             schema: LOCAL_AI_PORT_SCHEMA,
             state: "unavailable",
@@ -530,6 +536,7 @@ function createLocalAiRuntime({
           });
           return snapshot;
         }
+        if (configuredModelId === null) activeModelId = candidateModelId;
         publish({
           schema: LOCAL_AI_PORT_SCHEMA,
           state: activeModelId ? "stopped" : "unavailable",
