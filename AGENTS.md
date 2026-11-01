@@ -50,3 +50,7 @@ A composição OS pode deixar de anexar catálogos/intents quando o orçamento u
 ### Contextos com metadados maiores que sua parcela
 
 Além do balanceamento compartilhado, preserve `viableContextBudgets` em `src/intelligence/runtime.mjs`: um item cujo ID/proveniência JSON escapados e texto mínimo não caibam na parcela deve devolver o orçamento aos contextos restantes. Nunca tratar parcela reservada como contexto efetivamente emitido; não reordenar/elevar escopos nem mudar os limites do OS. Regressões de prompt máximo, fontes inviáveis e catálogo viável ficam em `tests/upstream/test_intelligence_runtime.mjs` e na evidência F0. Não implementar RAG/Memory/catálogo paralelo para resolver orçamento de input.
+
+### Troca de modelo em voo: invariância por requisição
+
+Após escolher rota local, preserve `engineId` e `modelId` do **port Local AI do OS** durante a geração, inclusive streams. Eventos de troca e ciclo **A → B → A** invalidam a requisição, com limpeza do observador em `finally`. Verifique snapshot antes/depois de cada delta e antes da resposta final; transições `busy/ready` no mesmo modelo devem funcionar. Não implementar gerenciador paralelo, não apresentar deltas provisórios como resposta validada nem prometer revogação de deltas já entregues. Regressões em `tests/upstream/test_intelligence_runtime.mjs` e evidências em `docs/evidence/INTELLIGENCE-001-F0-BASELINE.md`.

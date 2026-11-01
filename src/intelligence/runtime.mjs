@@ -322,35 +322,63 @@ function createIntelligenceRuntime({ inferencePort, modelRouterPort = null, getL
       ) {
         throw new Error("Local inference identity changed after route selection");
       }
-      const result = await inference.generate({
-        systemPrompt: systemPromptForLocale(getLocale),
-        prompt: renderRequest(request, route),
-        maxTokens: request.maxTokens,
-      }, {
-        signal,
-        onDelta: onDelta === null ? null : async (delta) => {
-          assertAlive();
-          if (signal?.aborted) throw new Error("Intelligence request cancelled");
-          if (typeof delta !== "string" || !delta || delta.includes("\0")) {
-            throw new TypeError("Intelligence streamed delta must be nonempty text");
-          }
-          await onDelta(delta);
-          assertAlive();
-          if (signal?.aborted) throw new Error("Intelligence request cancelled");
-        },
-      });
-      assertAlive();
-      if (signal?.aborted) throw new Error("Intelligence request cancelled");
-      if (result.engineId !== route.engineId || result.modelId !== route.modelId) {
-        throw new Error("Local inference identity changed after route selection");
+      // The model selected before inference is a per-request invariant.
+      // Observing only the result identity misses live model/engine changes
+      // (including A -> B -> A) while a response is being streamed.
+      let identityChanged = false;
+      const observeIdentity = (next) => {
+        if (!['ready', 'busy'].includes(next.state)
+            || next.engineId !== route.engineId
+            || next.modelId !== route.modelId) {
+          identityChanged = true;
+        }
+      };
+      const assertIdentityCurrent = () => {
+        const live = inference.getSnapshot();
+        if (identityChanged || !['ready', 'busy'].includes(live.state)
+            || live.engineId !== route.engineId
+            || live.modelId !== route.modelId) {
+          throw new Error('Local inference identity changed during generation');
+        }
+      };
+      listeners.add(observeIdentity);
+      try {
+        assertIdentityCurrent();
+        const result = await inference.generate({
+          systemPrompt: systemPromptForLocale(getLocale),
+          prompt: renderRequest(request, route),
+          maxTokens: request.maxTokens,
+        }, {
+          signal,
+          onDelta: onDelta === null ? null : async (delta) => {
+            assertAlive();
+            if (signal?.aborted) throw new Error('Intelligence request cancelled');
+            assertIdentityCurrent();
+            if (typeof delta !== 'string' || !delta || delta.includes('\0')) {
+              throw new TypeError('Intelligence streamed delta must be nonempty text');
+            }
+            await onDelta(delta);
+            assertAlive();
+            if (signal?.aborted) throw new Error('Intelligence request cancelled');
+            assertIdentityCurrent();
+          },
+        });
+        assertAlive();
+        if (signal?.aborted) throw new Error('Intelligence request cancelled');
+        assertIdentityCurrent();
+        if (result.engineId !== route.engineId || result.modelId !== route.modelId) {
+          throw new Error('Local inference identity changed after route selection');
+        }
+        return validateIntelligenceResponse({
+          schema: INTELLIGENCE_RESPONSE_SCHEMA,
+          text: result.text,
+          engineId: result.engineId,
+          modelId: result.modelId,
+          authority: 'none',
+        });
+      } finally {
+        listeners.delete(observeIdentity);
       }
-      return validateIntelligenceResponse({
-        schema: INTELLIGENCE_RESPONSE_SCHEMA,
-        text: result.text,
-        engineId: result.engineId,
-        modelId: result.modelId,
-        authority: "none",
-      });
     },
     dispose() {
       if (destroyed) return;
