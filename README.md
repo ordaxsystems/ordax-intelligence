@@ -2,6 +2,14 @@
 
 Fonte canônica do **código reutilizável do motor de inteligência e inferência** do OrdaX. A substituição das implementações ainda rastreadas no OS depende do cutover de distribuição. O código do sistema, autorização, Memory persistente, Supervisor, composição Native, entrega assinada e rollback pertencem ao [ordax-os](https://github.com/ordaxsystems/ordax-os). As interfaces da Aura pertencem ao [ordax-surface](https://github.com/ordaxsystems/ordax-surface) e/ou [ordax-apps](https://github.com/ordaxsystems/ordax-apps).
 
+## Próxima evolução canônica — Aura com inteligência contextual
+
+A **Aura** é a experiência de conversação (`ordax-surface`/`ordax-apps`); o **Intelligence** é o núcleo consultivo e de inferência que ela consome. Torná-la útil para conhecer apps, Spaces, documentos e estado vivo não é apenas treinar o GGUF: exige contexto **verificado pelo OS**, recuperação de conhecimento (RAG), avaliação de qualidade e ações por gateways autorizados.
+
+**Plano único desta evolução:** [INTELLIGENCE-001 — Aura com inteligência contextual](docs/plans/INTELLIGENCE-001-AURA-CONTEXTUAL-INTELLIGENCE.md). Ele registra o estado real dos contratos já existentes, fases F0–F5, fronteiras de ownership, critérios de aceite, matriz de regressões e próxima etapa elegível. Todo novo chat/engenheiro deve lê-lo antes de implementar RAG, descoberta de apps ou planejamento de ações.
+
+**Não declarar pronto:** o OS já possui recuperação lexical de memória, manifests semânticos de apps, catálogo/roteador de intents e um contrato de índice vetorial. Entretanto, seu contrato atual informa embeddings e busca vetorial **desativados**; não há prova de um agente geral executando ferramentas via modelo. Esta PR de documentação não autoriza cutover, modelo/engine novo nem altera contratos.
+
 ## Estado da migração
 
 **Migração em andamento, não concluída.** Nenhuma release de inferência independente, integração de distribuição, prova em QEMU ou hardware físico é declarada pronta. No cutover, os consumidores do OS deverão migrar para portas públicas e referências fixadas, antes da remoção do código interno anterior.

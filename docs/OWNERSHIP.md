@@ -22,3 +22,20 @@ Origem auditada: `ordax-os@45ab6648835744ad8ae85ee617a3b6e8418545e8`.
 | `docs/contracts/{intelligence,model-router,local-ai}.json` | RETAIN | Política canônica OS |
 
 Consumidores confirmados: `system/composition/native/main.mjs`, registradores de componentes, testes de integração e contratos de publicação. Não remover implementação OS sem cutover testado.
+
+## Evolução Aura/Intelligence — responsabilidades sem duplicação (2026-11-01)
+
+A sequência de implementação e os gates pertencem unicamente ao [INTELLIGENCE-001](plans/INTELLIGENCE-001-AURA-CONTEXTUAL-INTELLIGENCE.md). Este mapa registra **somente owners**: 
+
+| Área | Owner que define a autoridade | Papel permitido neste repositório |
+| --- | --- | --- |
+| Inventário, manifestos de apps, versão/slot, intents e ações | `ordax-os` / `ordax-apps` | Receber projeções de conhecimento já verificadas; sem registrar/instalar apps |
+| Memória, identidade, Space, autorização, fonte de documentos e índice semântico | `ordax-os` | Selecionar e compor contexto limitado após recuperação aprovada; sem armazenamento de memória/índice próprio |
+| Ranking semântico | `ordax-os/system/services/intelligence/semantic-retrieval.mjs` e `semantic-index` | Consumir porta de recuperação, sem duplicar ranking ou embeddings |
+| Modelo/inferência/planejamento consultivo | `ordax-intelligence` (código portátil); seleção/ativação física do engine no OS | Evoluir avaliação, composição de evidências e proposta consultiva, sem acesso executor |
+| Grants, política de execução e consentimento | `ordax-os`; `ordax-platform` no contexto remoto | **Nenhuma** emissão de grants ou permissão pelo modelo |
+| Execução real de ferramentas | `ordax-runtime` via gateway autorizado do OS | Nenhum `execute`/`shell`/`writeFile` direto |
+| Experiência Aura, mensagens, estados e confirmações | `ordax-surface` / `ordax-apps` | Entregar resposta consultiva/proveniência conforme contrato |
+
+Não declarar que a existência de um contrato comprova wiring de produto, embeddings ativados, execução autônoma ou cutover; exigir prova específica do owner.
+
