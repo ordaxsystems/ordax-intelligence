@@ -9,9 +9,9 @@ const MODEL = "ordax-fixture-gguf";
 const event = (delta, finishReason = null) =>
   `data: ${JSON.stringify({ model: MODEL, choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\n`;
 
-async function loopback(t, handler) {
+async function loopback(t, handler, { automaticHealth = true } = {}) {
   const server = createServer((request, response) => {
-    if (request.url === "/health") {
+    if (automaticHealth && request.url === "/health") {
       response.writeHead(200);
       response.end("ok");
       return;
@@ -201,5 +201,83 @@ test("SSE loopback refuses hidden tool authority, refusal metadata and malformed
         local.dispose();
       }
     });
+  }
+});
+
+
+test("real HTTP redirects never escape the local inference transport", async (t) => {
+  const escapedRequests = [];
+  // Use two *real* bound loopback servers. A default-follow fetch would reach
+  // this other origin even when the initially configured URL is 127.0.0.1.
+  const target = await loopback(t, (request, response) => {
+    escapedRequests.push(request.url);
+    if (request.url === "/v1/models") {
+      json(response, { data: [{ id: MODEL }] });
+    } else if (request.url === "/v1/chat/completions") {
+      json(response, {
+        model: MODEL,
+        choices: [{ message: { role: "assistant", content: "wrong destination" }, finish_reason: "stop" }],
+      });
+    } else {
+      response.writeHead(200);
+      response.end("ok");
+    }
+  }, { automaticHealth: false });
+
+  for (const scenario of [
+    { name: "health", redirectPath: "/health", modelId: MODEL, expectedState: "stopped" },
+    { name: "discovery", redirectPath: "/v1/models", modelId: null, expectedState: "unavailable" },
+    { name: "buffered", redirectPath: "/v1/chat/completions", modelId: MODEL },
+    { name: "streaming", redirectPath: "/v1/chat/completions", modelId: MODEL, stream: true },
+  ]) {
+    await t.test(scenario.name, async (subtest) => {
+      const endpoint = await loopback(subtest, (request, response) => {
+        if (request.url === scenario.redirectPath) {
+          response.writeHead(307, { location: target + scenario.redirectPath });
+          response.end();
+        } else {
+          throw new Error("unexpected local request: " + request.url);
+        }
+      }, { automaticHealth: scenario.redirectPath !== "/health" });
+      const runtime = createLocalAiRuntime({ endpoint, modelId: scenario.modelId });
+      try {
+        if (scenario.expectedState) {
+          assert.equal((await runtime.probe()).state, scenario.expectedState);
+        } else {
+          assert.equal((await runtime.probe()).state, "ready");
+          const deltas = [];
+          await assert.rejects(
+            runtime.generate({ prompt: "must stay local" }, scenario.stream
+              ? { onDelta: (part) => deltas.push(part) }
+              : {}),
+          );
+          assert.deepEqual(deltas, []);
+        }
+        assert.deepEqual(escapedRequests, [], "redirect target must never receive a request");
+      } finally {
+        runtime.dispose();
+      }
+    });
+  }
+});
+
+test("a custom Fetch adapter reporting a followed redirect cannot publish ready", async () => {
+  let cancelled = 0;
+  const runtime = createLocalAiRuntime({
+    modelId: MODEL,
+    fetchImpl: async (_url, options) => {
+      assert.equal(options.redirect, "error");
+      return {
+        ok: true,
+        redirected: true,
+        body: { cancel() { cancelled += 1; } },
+      };
+    },
+  });
+  try {
+    assert.equal((await runtime.probe()).state, "stopped");
+    assert.equal(cancelled, 1);
+  } finally {
+    runtime.dispose();
   }
 });
