@@ -116,6 +116,88 @@ class LocalAiRuntimeBuilderTests(unittest.TestCase):
         self.assertIn('runtime / "licenses/llama.cpp-MIT.txt"', builder)
         self.assertIn('runtime / "licenses/model-Apache-2.0.txt"', builder)
 
+    def test_model_filename_rejects_shell_metacharacters_and_url_fragments(self):
+        original = json.loads(SOURCE_LOCK.read_text(encoding="utf-8"))
+        forbidden = (
+            "model$(touch injected).gguf",
+            "model`echo injected`.gguf",
+            'model" --host 0.0.0.0 ".gguf',
+            "model\ninjected.gguf",
+            "model?download=1.gguf",
+            "model#fragment.gguf",
+            "model%20space.gguf",
+            "../../outside.gguf",
+            "model\\outside.gguf",
+            "model.gguf;command",
+            "..",
+            ".",
+            "",
+        )
+        for filename in forbidden:
+            with self.subTest(filename=filename):
+                lock = json.loads(json.dumps(original))
+                lock["model"]["filename"] = filename
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "source-lock.json"
+                    path.write_text(json.dumps(lock), encoding="utf-8")
+                    with self.assertRaisesRegex(
+                        BUILDER.RuntimeBuildError, "model filename is unsafe",
+                    ):
+                        BUILDER.load_source_lock(path)
+                # The model URL and launch script share one validator, even
+                # when invoked independently of the load_source_lock entry.
+                with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "model filename is unsafe"):
+                    BUILDER.model_url(lock)
+                with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "model filename is unsafe"):
+                    BUILDER.launcher_text(lock)
+
+    def test_huggingface_repository_is_a_literal_owner_repo_pair(self):
+        original = json.loads(SOURCE_LOCK.read_text(encoding="utf-8"))
+        forbidden = (
+            "owner",
+            "owner/repo/extra",
+            "owner/../repo",
+            "owner/..",
+            "owner/repo?download=true",
+            "owner/repo#fragment",
+            "owner/repo\nx",
+            "owner/repo space",
+            "owner\\other/repo",
+            "https://other.example/repo",
+            "/repo",
+            "owner/",
+            "owner/repo%2Fother",
+        )
+        for repository in forbidden:
+            with self.subTest(repository=repository):
+                lock = json.loads(json.dumps(original))
+                lock["model"]["repository"] = repository
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "source-lock.json"
+                    path.write_text(json.dumps(lock), encoding="utf-8")
+                    with self.assertRaisesRegex(
+                        BUILDER.RuntimeBuildError, "model repository is invalid",
+                    ):
+                        BUILDER.load_source_lock(path)
+                with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "model repository is invalid"):
+                    BUILDER.model_url(lock)
+                with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "model repository is invalid"):
+                    BUILDER.launcher_text(lock)
+
+    def test_reviewed_model_source_remains_safe_in_url_and_launcher(self):
+        lock = BUILDER.load_source_lock()
+        self.assertEqual(
+            BUILDER.validate_model_source_path(lock["model"]),
+            lock["model"]["filename"],
+        )
+        url = BUILDER.model_url(lock)
+        self.assertTrue(url.startswith("https://huggingface.co/"))
+        self.assertIn("/resolve/" + lock["model"]["upstream_revision"] + "/", url)
+        launcher = BUILDER.launcher_text(lock)
+        self.assertIn('--model "$runtime_root/models/' + lock["model"]["filename"] + '"', launcher)
+        self.assertNotIn("$(", launcher)
+        self.assertNotIn(chr(96), launcher)
+
     def test_model_url_is_revision_pinned(self):
         lock = BUILDER.load_source_lock()
         url = BUILDER.model_url(lock)

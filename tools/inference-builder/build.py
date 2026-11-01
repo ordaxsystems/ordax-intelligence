@@ -51,6 +51,13 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 REVISION_RE = re.compile(r"^[0-9a-f]{7,64}$")
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
+# This filename is interpolated into the launcher shell script and a URL.
+# It must be a single literal GGUF basename, not a shell/URL expression.
+MODEL_FILENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}\.gguf$")
+# Hugging Face model source is an owner/repository pair, not a URL or path.
+MODEL_REPOSITORY_RE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}/[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"
+)
 
 
 class RuntimeBuildError(RuntimeError):
@@ -102,6 +109,21 @@ def load_json(path, label):
     return value
 
 
+def validate_model_source_path(model):
+    """One build-time gate for model URL and shell-interpolated GGUF basename."""
+    repository = model.get("repository")
+    if (
+        not isinstance(repository, str)
+        or not MODEL_REPOSITORY_RE.fullmatch(repository)
+        or any(".." in part for part in repository.split("/"))
+    ):
+        raise RuntimeBuildError("model repository is invalid")
+    filename = model.get("filename")
+    if not isinstance(filename, str) or not MODEL_FILENAME_RE.fullmatch(filename):
+        raise RuntimeBuildError("model filename is unsafe")
+    return filename
+
+
 def load_source_lock(path=None):
     if SOURCE_LOCK is None or CONTRACT is None:
         raise RuntimeBuildError("canonical OS source must be supplied explicitly")
@@ -146,10 +168,7 @@ def load_source_lock(path=None):
 
     if not SAFE_ID_RE.fullmatch(str(model.get("id", ""))):
         raise RuntimeBuildError("model id is unsafe")
-    if not isinstance(model.get("repository"), str) or "/" not in model["repository"]:
-        raise RuntimeBuildError("model repository is invalid")
-    if not isinstance(model.get("filename"), str) or Path(model["filename"]).name != model["filename"]:
-        raise RuntimeBuildError("model filename is unsafe")
+    validate_model_source_path(model)
     if model.get("format") != "GGUF" or model.get("quantization") != "Q4_0":
         raise RuntimeBuildError("unexpected model format or quantization")
     if not SHA256_RE.fullmatch(str(model.get("sha256", ""))):
@@ -215,6 +234,7 @@ def source_commit():
 
 def model_url(lock):
     model = lock["model"]
+    validate_model_source_path(model)
     return (
         f"https://huggingface.co/{model['repository']}/resolve/"
         f"{model['upstream_revision']}/{model['filename']}?download=true"
@@ -451,6 +471,7 @@ def verify_static_engine(binary, lock):
 
 def launcher_text(lock):
     model = lock["model"]
+    validate_model_source_path(model)
     return f"""#!/bin/sh
 set -eu
 runtime_root=${{ORDAX_LOCAL_AI_RUNTIME_ROOT:-/run/ordax/runtime/local-ai}}
