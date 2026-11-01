@@ -115,6 +115,41 @@ test("source package refuses symlinked dist output without writing outside", { s
   assert.equal(existsSync(join(external, "receipt.json")), false);
 });
 
+test("unsigned source handoff rejects names that classic ustar cannot represent", async t => {
+  for (const filename of ["nível.mjs", "a".repeat(98) + ".mjs"]) {
+    await t.test(filename, subtest => {
+      const root = fixture(subtest);
+      writeFileSync(join(root, "src", filename), "export const fixture = true;\n");
+      const result = run(root);
+      assert.notEqual(result.status, 0, "unsafe tar path must block publication");
+      assert.match(result.stderr, /Unsafe or non-ASCII ustar member path/);
+      assert.equal(existsSync(join(root, "dist", "receipt.json")), false);
+    });
+  }
+});
+
+test("unsigned source handoff refuses unrepresentable filenames with control bytes", { skip: process.platform === "win32" }, t => {
+  const root = fixture(t);
+  writeFileSync(join(root, "src", "line\nbreak.mjs"), "export const invalid = true;\n");
+  const result = run(root);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Unsafe or non-ASCII ustar member path/);
+  assert.equal(existsSync(join(root, "dist", "receipt.json")), false);
+});
+
+test("source handoff archive version is a safe single filename component", async t => {
+  for (const version of ["../escape", "1.0.0/../../escape", "line\nbreak", "", null, "x".repeat(81)]) {
+    await t.test(String(version), subtest => {
+      const root = fixture(subtest);
+      writeFileSync(join(root, "package.json"), JSON.stringify({ version }) + "\n");
+      const result = run(root);
+      assert.notEqual(result.status, 0, "unsafe version must fail before output");
+      assert.match(result.stderr, /Invalid source handoff package version/);
+      assert.equal(existsSync(join(root, "dist", "receipt.json")), false);
+    });
+  }
+});
+
 test("source package refuses an empty portable source tree", t => {
   const root = fixture(t);
   unlinkSync(join(root, "src", "example.mjs"));
