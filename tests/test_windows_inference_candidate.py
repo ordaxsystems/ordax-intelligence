@@ -26,6 +26,7 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
         # objects, no stale sources, and failure rather than sharing a live dir.
         with tempfile.TemporaryDirectory() as root:
             cache = pathlib.Path(root) / "model-cache"
+            cache.mkdir()
             expected = pathlib.Path(root).resolve() / "ordax-windows-inference-native-build"
             with candidate.fixed_windows_workspace(cache) as first:
                 self.assertEqual(first, expected)
@@ -38,6 +39,99 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
             with candidate.fixed_windows_workspace(cache) as second:
                 self.assertEqual(second, expected)
                 self.assertFalse((second / "old.obj").exists())
+
+    def test_windows_proof_paths_are_isolated_without_creating_output_early(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            requested_output = root / "signed-evidence"
+            requested_cache = root / "acquisition-cache"
+            output, cache = candidate.validate_proof_paths(
+                requested_output, requested_cache
+            )
+            self.assertEqual(output, requested_output)
+            self.assertEqual(cache, requested_cache)
+            self.assertTrue(cache.is_dir())
+            self.assertFalse(output.exists(), "candidate output is created after proof only")
+            with candidate.fixed_windows_workspace(cache) as workspace:
+                self.assertEqual(workspace, root / "ordax-windows-inference-native-build")
+                self.assertTrue(workspace.is_dir())
+            self.assertFalse(workspace.exists(), "workspace is always removed")
+
+    def test_windows_proof_rejects_path_overlap_without_writing_anything(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            cache = root / "cache"
+            workspace = root / "ordax-windows-inference-native-build"
+            cases = (
+                (cache, cache),
+                (root, cache),
+                (cache / "proof", cache),
+                (root / "proof", root),
+                (workspace, cache),
+                (workspace / "proof", cache),
+                (root / "proof", workspace),
+            )
+            for output_path, cache_path in cases:
+                with self.subTest(output=output_path, cache=cache_path):
+                    with self.assertRaisesRegex(
+                        candidate.canonical.RuntimeBuildError, "must not overlap"
+                    ):
+                        candidate.validate_proof_paths(output_path, cache_path)
+            self.assertFalse(cache.exists())
+            self.assertFalse(workspace.exists())
+
+    def test_windows_proof_refuses_output_and_cache_symlinks(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            outside = root / "outside"
+            outside.mkdir()
+            output_alias = root / "output-alias"
+            cache_alias = root / "cache-alias"
+            try:
+                output_alias.symlink_to(outside, target_is_directory=True)
+                cache_alias.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("host does not permit creating directory symlinks")
+            with self.assertRaisesRegex(
+                candidate.canonical.RuntimeBuildError, "new real directory"
+            ):
+                candidate.validate_proof_paths(output_alias, root / "cache")
+            with self.assertRaisesRegex(
+                candidate.canonical.RuntimeBuildError, "cache.*symlink"
+            ):
+                candidate.validate_proof_paths(root / "proof", cache_alias)
+            with self.assertRaisesRegex(
+                candidate.canonical.RuntimeBuildError, "cache.*symlink"
+            ):
+                with candidate.fixed_windows_workspace(cache_alias):
+                    pass
+            self.assertEqual(list(outside.iterdir()), [], "never write through symlinks")
+
+    def test_windows_proof_rejects_symlinked_output_parent_and_existing_workspace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            outside = root / "outside"
+            outside.mkdir()
+            alias = root / "alias"
+            try:
+                alias.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("host does not permit creating directory symlinks")
+            with self.assertRaisesRegex(
+                candidate.canonical.RuntimeBuildError, "output parent.*symlink"
+            ):
+                candidate.validate_proof_paths(alias / "candidate", root / "cache")
+            self.assertEqual(list(outside.iterdir()), [])
+
+            workspace = root / "ordax-windows-inference-native-build"
+            workspace.mkdir()
+            sentinel = workspace / "existing.obj"
+            sentinel.write_bytes(b"do not remove")
+            with self.assertRaisesRegex(
+                candidate.canonical.RuntimeBuildError, "absent and clean"
+            ):
+                candidate.validate_proof_paths(root / "proof", root / "cache")
+            self.assertEqual(sentinel.read_bytes(), b"do not remove")
 
     def test_binary_inventory_rejects_missing_executable_or_dll(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -77,7 +171,9 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
         self.assertIn('canonical.prepare_engine_mirror(lock, Path(cache_dir) / "source-cache")', source)
         self.assertIn("canonical.prepare_engine_mirror(", source)
         self.assertIn("canonical.checkout_engine(", source)
-        self.assertIn("canonical.source_commit()", source)
+        self.assertIn("canonical.attest_os_committed_inputs(lock)", source)
+        self.assertIn("out_dir, cache_dir = validate_proof_paths(out_dir, cache_dir)", source)
+        self.assertNotIn('"os_source_commit": canonical.source_commit()', source)
         self.assertIn('"activation_authorized": False', source)
         self.assertIn('"signed_release": False', source)
         self.assertIn('"-DCMAKE_EXE_LINKER_FLAGS=/Brepro"', source)
