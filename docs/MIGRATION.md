@@ -297,3 +297,9 @@ Testes com prompt do usuário no limite de 32000 caracteres, contextos de docume
 Corrigida lacuna no produtor: checar rota e `result.modelId` não detecta mudança temporária de modelo/motor (**A → B → A**) durante a inferência. O Intelligence observa o mesmo port Local AI do OS por requisição e confere identidade antes/depois de streaming e antes da resposta final. Estado `busy` no mesmo modelo é aceito. Um latch registra mudanças intermediárias até a conclusão e a limpeza do observador é garantida.
 
 Testes em `tests/upstream/test_intelligence_runtime.mjs` rejeitam deltas após troca de identidade, validam o ciclo A/B/A, permitem progresso normal e detectam alteração dentro de callback assíncrono. Deltas já entregues permanecem provisórios e não são apagados. Nenhum contrato, source pin OS, backend, instalador ou grant foi alterado. F0 física segue pendente; consulte [evidência F0](evidence/INTELLIGENCE-001-F0-BASELINE.md).
+
+## INTELLIGENCE-001 F0 — preflight final após preferência regional (2026-11-01)
+
+Fechada janela na preparação do prompt: `systemPromptForLocale(getLocale)` pode publicar mudança no motor/modelo após a checagem pré-inferência. O Intelligence agora revalida o snapshot Local AI **depois de montar todo input e imediatamente antes de chamar `generate()`**, exigindo backend `ready`, identidade preservada e latch de eventos A → B → A intacto. Na falha, nenhum contexto é enviado.
+
+Regressões com validador OS real no adaptador verificam mudança de modelo, volta ao modelo inicial e transição para `busy` durante `getLocale()`. Não alterar a escolha regional, as autorizações, o gerenciador de modelos nem o source pin do OS. E2E Windows com engine/modelo aprovado permanece pendente. Evidência: [INTELLIGENCE-001 F0](evidence/INTELLIGENCE-001-F0-BASELINE.md).
