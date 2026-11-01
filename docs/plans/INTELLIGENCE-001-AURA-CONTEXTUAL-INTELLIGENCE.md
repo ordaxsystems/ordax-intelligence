@@ -1,6 +1,6 @@
 # INTELLIGENCE-001 — Aura com inteligência contextual do OrdaX
 
-**Status:** plano canônico da evolução do **produtor `ordax-intelligence`**, aprovado para documentação; implementação das etapas abaixo **não iniciada por esta PR**.
+**Status:** plano canônico da evolução do **produtor `ordax-intelligence`**. A F0 tem testes integrados com contexto e segurança em fixtures; a qualidade com modelo real e o Windows físico ainda não foram avaliados. Evidência: [F0-BASELINE](../evidence/INTELLIGENCE-001-F0-BASELINE.md). As fases F1–F5 seguem pendentes.
 **Data-base:** 2026-11-01.
 **Escopo deste repositório:** seleção/organização de contexto, raciocínio consultivo, RAG no consumidor e integração do modelo local por portas verificadas.
 **Objetivo:** a Aura compreender os apps realmente disponíveis, estado do OS, documentos, Space/projeto e memória autorizada; propor próximos passos úteis sem inventar capacidades nem obter autoridade por texto do modelo.
@@ -138,4 +138,6 @@ As regressões devem usar **fixtures isoladas, HTTP loopback, contratos OS reais
 - **F4:** propostas tipadas, decisões de risco, grants/confirmação e execução por runtime OS, E2E com falhas/cancelamentos, sem alterar autoridade consultiva.
 - **F5:** qualidade e desempenho comprovados no Windows físico, atualização de pins/ativação *somente pelo owner OS* e testes por impacto para outros destinos.
 
-**Próxima ação elegível neste repositório:** F0 — adicionar testes/fixtures de avaliação de intenção, precisão baseada em evidência e privacidade, usando as portas existentes; não iniciar novo backend de embeddings nem executor de ações antes de verificar os contratos e a composição real. Registrar evidência de cada avanço em `docs/MIGRATION.md`, mantendo **este** documento como o único plano de fases da iniciativa.
+**F0 — evidência incremental:** [F0-BASELINE](../evidence/INTELLIGENCE-001-F0-BASELINE.md) documenta a composição OS de apps, intenções e Memory e suas regressões integradas com seis cenários e quatro casos de falha. Os testes usam backend simulado e não demonstram qualidade do modelo nem E2E Windows.
+
+**Próxima ação elegível:** concluir F0 com avaliação da qualidade do **modelo local real em Windows físico**, medindo fundamentação, abstinência, seleção de intenção e propostas indevidas sob os mesmos contextos autorizados. Somente então avançar causalmente para F1 sem clonar catálogo, Memory, embeddings ou executor já pertencentes ao OS. Registrar evidências em `docs/MIGRATION.md` e preservar este documento como plano único da iniciativa.

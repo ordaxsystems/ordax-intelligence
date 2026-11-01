@@ -25,6 +25,8 @@ Este repositório é a fonte canônica do código **reutilizável** de Intellige
 
 Antes de implementar uma fase do plano: (1) localizar contratos e serviços existentes no OS, (2) classificar cada arquivo/port pelo owner, (3) adicionar regressões negativas de escopo/identidade/ação e cenário de indisponibilidade, (4) provar limite de contexto, offline e status correto, (5) separar CI de fixture, teste Windows físico e ativação por pin OS. Em qualquer alteração de RAG, consulta de apps ou planejamento, manter `ordax.intelligence/1` consultivo (`toolExecution=false`, `authority=none`); qualquer execução exige contrato/gateway separado no OS e Runtime.
 
+Os testes de regressão da F0 estão em `tests/upstream/test_contextual_f0.mjs`, com cenários exclusivamente sintéticos em `tests/fixtures/contextual-f0.json`. Novas mudanças em contexto Aura devem preservar a verificação conjunta de apps, autorização de Memory/Space, origem de evidências, falsificação de IDs reservados, descarte de resultados tardios e ausência de execução. Consulte [F0-BASELINE](docs/evidence/INTELLIGENCE-001-F0-BASELINE.md); nunca classifique testes com backend simulado como avaliação de qualidade do modelo.
+
 ## Continuidade
 
 Atualize **`docs/MIGRATION.md`** (registro de gates, PRs, riscos e próxima etapa) e **`docs/OWNERSHIP.md`** (responsabilidades por arquivo) em mudanças arquiteturais. Não dependa de memória da conversa, não reintroduza Alpine/APK e não faça force-push da `main`.

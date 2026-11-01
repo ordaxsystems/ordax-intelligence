@@ -34,3 +34,8 @@ A resposta requer o mesmo `model_id` exato, término `finish_reason=stop`, texto
 Rodar a **mesma** revisão assinada/atestada do motor e GGUF em perfis reais de RAM/CPU, com 10+ amostras após warmup; arquivar versão exata do OS, digest EROFS, modelo, configuração e resultados. Comparar cold-start em prova separada, medir memória total do sistema e estabilidade pelo host canônico e repetir em QEMU/USB/notebook conforme gates. Não inventar limites de desempenho antes de medir.
 
 A CI executa `tests/test_local_http_benchmark.py` com servidor HTTP local **fixture** para validar apenas comportamento, isolamento e formato; seus números de tempo/RSS não são benchmarks de produto.
+
+## INTELLIGENCE-001 — baseline de contexto
+
+Os [testes F0](evidence/INTELLIGENCE-001-F0-BASELINE.md) usam contratos e serviços do OS com backend de inferência simulado: validam o contexto, escopos e a autoridade, **não** a compreensão do modelo local, nem latência, embeddings ou inferência física. O próximo benchmark de qualidade requer modelo real e Windows físico, com resultados por caso.
+
