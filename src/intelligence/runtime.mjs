@@ -52,7 +52,7 @@ function systemPromptForLocale(getLocale) {
   // the user's prompt, host language or Windows region, or cache old values.
   const locale = regionalLocalePreference.validate(getLocale());
   if (typeof locale !== "string" || !locale.trim()
-      || /[\\u0000-\\u001f\\u007f]/u.test(locale)) {
+      || /[\u0000-\u001f\u007f]/u.test(locale)) {
     throw new TypeError("Canonical OS regional.locale validator returned invalid locale");
   }
   return INTELLIGENCE_SYSTEM_PROMPT + "\n" +
