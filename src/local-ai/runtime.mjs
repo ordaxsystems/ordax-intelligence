@@ -82,6 +82,9 @@ function validatedBufferedCompletion(payload) {
     || message.refusal !== undefined
     || choice.tool_calls !== undefined
     || choice.function_call !== undefined
+    || choice.tool_call_id !== undefined
+    || choice.refusal !== undefined
+    || choice.delta !== undefined
   ) {
     throw new Error("Local AI completion is invalid or contains unsupported tool authority");
   }
