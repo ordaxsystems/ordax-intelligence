@@ -312,8 +312,13 @@ function createIntelligenceRuntime({ inferencePort, modelRouterPort = null, getL
         throw new Error('Local inference identity changed before route selection');
       }
       let identityChanged = false;
+      let routeConfirmed = false;
       const observeIdentity = (next) => {
-        if (!['ready', 'busy'].includes(next.state)
+        // A temporary busy state during routing means a concurrent caller
+        // touched the backend before this request's model was committed.
+        // After routing, busy/ready are normal generation transitions.
+        if ((!routeConfirmed && next.state !== 'ready')
+            || !['ready', 'busy'].includes(next.state)
             || next.engineId !== selection.engineId
             || next.modelId !== selection.modelId) {
           identityChanged = true;
@@ -347,6 +352,7 @@ function createIntelligenceRuntime({ inferencePort, modelRouterPort = null, getL
             || route.modelId !== selection.modelId) {
           throw new Error('Local inference identity changed after route selection');
         }
+        routeConfirmed = true;
         assertIdentityCurrent();
         // The OS locale resolver runs synchronously during input assembly.
         // It may publish a model switch or a busy/stopped transition after
