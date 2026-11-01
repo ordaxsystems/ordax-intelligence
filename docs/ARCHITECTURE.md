@@ -36,3 +36,22 @@ Serviço Intelligence, motor llama.cpp candidato e bytes do modelo GGUF têm cic
 ### Modelo descoberto: confirmação atômica de identidade
 
 A identidade dinâmica recebida em `GET /v1/models` é **provisória** até o `GET /health` retornar e a revisão da sondagem continuar válida. Enquanto a sondagem está pendente, `activeModelId` e o snapshot `ready` mantêm a mesma identidade já aprovada. Se uma geração começar nesse intervalo, sua revisão de atividade invalida a sondagem anterior, que não pode promover posteriormente uma identidade nova. O commit da identidade e a publicação do snapshot ocorrem juntos após a revalidação; falhas continuam fechadas e nenhum modelo externo é autorizado.
+
+## Localidade regional na Aura (portabilidade sem segunda preferência)
+
+O `ordax-os/system/composition/native/main.mjs` já passa `getLocale: () => preferenceStore.load()["regional.locale"] ?? "pt-BR"` à instância consultiva. A revisão antiga do produtor ignorava `getLocale`, de modo que um futuro cutover de source poderia deixar de respeitar o idioma configurado. O núcleo portátil agora aceita `getLocale` e **exige** que a vinculação `bindIntelligenceContracts()` injete também o `regionalLocalePreference` **canônico do OS**, de `system/services/preferences/regional.mjs`. Este é o único owner que valida valores permitidos; os nomes legíveis nos prompts são apenas apresentação para o modelo.
+
+Exemplo de integração a ser realizado **pelo engenheiro do OS** durante seu cutover, sem mudar o pin por esta PR:
+
+```js
+import { regionalLocalePreference } from "./system/services/preferences/regional.mjs";
+const { createIntelligenceRuntime } = bindIntelligenceContracts({
+  intelligence, localAi, modelRouter, regionalLocalePreference,
+});
+const core = createIntelligenceRuntime({
+  inferencePort: backend,
+  getLocale: () => preferenceStore.load()["regional.locale"] ?? "pt-BR",
+});
+```
+
+Sem `getLocale`, o runtime conserva o prompt padrão para consumidores antigos. Com `getLocale`, ausência do validador ou valor não autorizado causa erro **antes** de chamar `inference.generate`; não há fallback baseado no texto do usuário, SO ou localização inferida. A preferência é lida por pedido, sem cache, e não modifica `ordax.intelligence/1`, Identity, Memory, grants ou mecanismos de ação. O teste compat com checkout OS fixado valida a porta regional real. A integração física da Aura/Windows e a atualização do source pin seguem como gates exclusivos do OS.

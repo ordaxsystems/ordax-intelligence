@@ -30,3 +30,7 @@ Os testes de regressão da F0 estão em `tests/upstream/test_contextual_f0.mjs`,
 ## Continuidade
 
 Atualize **`docs/MIGRATION.md`** (registro de gates, PRs, riscos e próxima etapa) e **`docs/OWNERSHIP.md`** (responsabilidades por arquivo) em mudanças arquiteturais. Não dependa de memória da conversa, não reintroduza Alpine/APK e não faça force-push da `main`.
+
+### Idioma da Aura é autoridade do OS
+
+Ao alterar `src/intelligence/runtime.mjs`, preserve `getLocale` dinâmico **e a injeção** `regionalLocalePreference.validate` do OS em `bindIntelligenceContracts`. Nunca inferir o idioma pelo prompt, sistema hospedeiro ou cache local, nem criar uma segunda chave `regional.locale`. O consumidor que fornece `getLocale` sem validador regional falha fechado; sem getter a API continua compatível. Os testes em `tests/upstream/test_intelligence_runtime.mjs` cobrem mudança de idioma na sessão e valor malicioso, com fonte canônica `_upstream/ordax-os/system/services/preferences/regional.mjs`. O cutover de bindings e remoção do runtime antigo são tarefas do owner OS, não deste repositório.
