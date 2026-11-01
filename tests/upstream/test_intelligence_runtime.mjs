@@ -703,6 +703,85 @@ test("Intelligence refuses external model execution in MVP", async () => {
   intelligence.dispose();
 });
 
+test("Intelligence refuses context dispatch after an A-B-A model switch during route selection", async () => {
+  let requests = 0;
+  let routes = 0;
+  const inference = inferencePort({ onGenerate() { requests += 1; } });
+  const router = Object.freeze({
+    schema: MODEL_ROUTER_PORT_SCHEMA,
+    route(request) {
+      routes += 1;
+      if (routes === 1) {
+        inference.publish({ state: "ready", modelId: "other-model" });
+        inference.publish({ state: "ready", modelId: "qwen-small" });
+      }
+      return validateModelRoute({
+        provider: "local", engineId: "llama.cpp", modelId: "qwen-small",
+        purpose: request.purpose,
+      });
+    },
+  });
+  const intelligence = createIntelligenceRuntime({ inferencePort: inference, modelRouterPort: router });
+  try {
+    await assert.rejects(() => intelligence.respond({
+      prompt: "private app catalog question",
+      context: [{ id: "verified-app", scope: "system", text: "PRIVATE_APP_FACT", provenance: "os" }],
+    }), /identity changed after route selection/);
+    assert.equal(requests, 0, "nothing may reach inference after A-B-A during routing");
+    assert.equal(intelligence.getSnapshot().modelId, "qwen-small");
+    const next = await intelligence.respond({ prompt: "new valid request" });
+    assert.equal(next.authority, "none");
+    assert.equal(requests, 1, "the observer must be removed after a rejected route");
+  } finally { intelligence.dispose(); }
+});
+
+test("Intelligence refuses engine A-B-A transitions during an otherwise valid route", async () => {
+  let requests = 0;
+  const inference = inferencePort({ onGenerate() { requests += 1; } });
+  const router = Object.freeze({
+    schema: MODEL_ROUTER_PORT_SCHEMA,
+    route(request) {
+      inference.publish({ state: "ready", engineId: "other-engine" });
+      inference.publish({ state: "ready", engineId: "llama.cpp" });
+      return validateModelRoute({
+        provider: "local", engineId: "llama.cpp", modelId: "qwen-small",
+        purpose: request.purpose,
+      });
+    },
+  });
+  const intelligence = createIntelligenceRuntime({ inferencePort: inference, modelRouterPort: router });
+  try {
+    await assert.rejects(() => intelligence.respond({
+      prompt: "sensitive document",
+      context: [{ id: "note", scope: "document", text: "PRIVATE_NOTE", provenance: "os-memory" }],
+    }), /identity changed after route selection/);
+    assert.equal(requests, 0);
+  } finally { intelligence.dispose(); }
+});
+
+test("Intelligence rejects busy-ready transitions within route selection, not normal busy generation", async () => {
+  let requests = 0;
+  const inference = inferencePort({ onGenerate() { requests += 1; } });
+  const router = Object.freeze({
+    schema: MODEL_ROUTER_PORT_SCHEMA,
+    route(request) {
+      inference.publish({ state: "busy" });
+      inference.publish({ state: "ready" });
+      return validateModelRoute({
+        provider: "local", engineId: "llama.cpp", modelId: "qwen-small",
+        purpose: request.purpose,
+      });
+    },
+  });
+  const intelligence = createIntelligenceRuntime({ inferencePort: inference, modelRouterPort: router });
+  try {
+    await assert.rejects(() => intelligence.respond({
+      prompt: "do not dispatch between concurrent inference slots",
+    }), /identity changed after route selection/);
+    assert.equal(requests, 0);
+    assert.equal(intelligence.getSnapshot().state, "ready");
+  } finally { intelligence.dispose(); }
+});
 test("Intelligence blocks a stale injected route before forwarding the prompt", async () => {
   let generated = 0;
   const inference = inferencePort({
