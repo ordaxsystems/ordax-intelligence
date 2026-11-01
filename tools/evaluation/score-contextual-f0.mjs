@@ -2,7 +2,7 @@
 // INTELLIGENCE-001 F0. Offline quality canary for responses captured by an
 // independently authorized Aura/OS runner. This does not call the model,
 // run tools, authorize an action or attest a physical Windows installation.
-import { constants, closeSync, fstatSync, openSync, readFileSync } from "node:fs";
+import { constants, closeSync, fstatSync, lstatSync, openSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -92,6 +92,9 @@ export function scoreResponses(cases, payload) {
   exactKeys(payload, ["schema", "modelId", "answers"], "response bundle");
   if (payload.schema !== RESPONSE_SCHEMA) throw new TypeError("response bundle schema is invalid");
   boundedText(payload.modelId, "model ID", 160);
+  if (/[\u0000-\u001f\u007f]/u.test(payload.modelId)) {
+    throw new TypeError("model ID may not contain control characters");
+  }
   if (!Array.isArray(payload.answers) || payload.answers.length !== cases.length) {
     throw new TypeError("response bundle must cover every F0 scenario exactly once");
   }
@@ -142,6 +145,11 @@ export function scoreResponses(cases, payload) {
 }
 
 function readBoundedJson(path) {
+  // Windows does not offer the POSIX O_NOFOLLOW flag. Refuse an already
+  // existing symlink before opening as an additional portable guard.
+  if (lstatSync(path).isSymbolicLink()) {
+    throw new TypeError("quality input path must not be a symlink");
+  }
   const flags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);
   let fd;
   try {
