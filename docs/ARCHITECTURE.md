@@ -4,6 +4,14 @@ Motor reutilizável consultivo, Model Router e cliente de inferência HTTP/SSE s
 
 O OS preserva **Identity, autorização, Memory canônica, Space/projeto, Action Gateway, Supervisor, Host Native, assinatura/ativação, atualização/rollback**. `ordax-platform` preserva OAuth/consentimento MCP remoto; `ordax-runtime`, execução de ações; `ordax-surface` e `ordax-apps`, interface Aura. Um modelo não pode conceder permissões.
 
+## Aura, conhecimento de apps e RAG — fronteira de integração
+
+A Aura consome o Intelligence, mas não incorpora uma segunda instância de inferência. As novas fases de entendimento de apps, RAG e planejamento têm um **único plano de execução neste repositório**: [INTELLIGENCE-001](plans/INTELLIGENCE-001-AURA-CONTEXTUAL-INTELLIGENCE.md).
+
+A composição do OS **já contém** `system/services/intelligence/application-awareness.mjs`, `application-context.mjs`, `application-semantic-router.mjs` e `application-action-capabilities.mjs`, além de `system/services/memory/context.mjs` e `system/services/intelligence/semantic-retrieval.mjs`. Manifests `ai/manifest.json` verificados de `ordax-apps` seguem o contrato OS `ordax.app-intelligence-manifest/1`, com classes de origem/trust e action IDs; não criar um segundo parser, catálogo ou roteador autoritativo no Intelligence. O OS continua dono da recuperação com autorização estruturada **antes** de qualquer ranking.
+
+O contrato `ordax.semantic-index/1` já descreve índice derivado e invalidável, mas `ordax-os/docs/contracts/semantic-index.json` declara **`semantic_search_enabled=false` e `embedding_generation_enabled=false`**. O Intelligence deve usar recuperação existente (lexical/contexto aprovado) e só consumir semântica/embeddings após um backend físico, hashes/licença e política OS comprovados. Planejamento de ações permanece consultivo; propostas precisam transitar por contratos OS separados, confirmação/grants e execução no Runtime. Nenhuma resposta do modelo, manifesto ou vetor concede autoridade.
+
 ## Observadores e descarte
 
 Os snapshots dos ports Local AI e Intelligence são verificados pelos validadores do OS antes da publicação. Notificações a consumidores são consultivas: uma exceção síncrona em um observador não pode impedir mudanças de estado, interferir na inferência nem bloquear outros observadores. A notificação compartilhada é implementada exclusivamente em `src/snapshot-notification.mjs`; inscrições removidas durante uma publicação não são novamente chamadas. `dispose()` durante `busy` bloqueia o envio de novas requisições HTTP e `dispose()` durante a notificação de `ready` impede a aprovação tardia de uma resposta.
