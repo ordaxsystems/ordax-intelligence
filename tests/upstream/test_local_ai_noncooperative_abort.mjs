@@ -134,3 +134,65 @@ test("caller cancellation releases a noncooperative buffered body without approv
     runtime.dispose();
   }
 });
+
+
+test("late model discovery response after timeout is canceled instead of kept alive", { timeout: 2500 }, async () => {
+  let resolveLateHeaders;
+  const headers = new Promise(resolve => { resolveLateHeaders = resolve; });
+  let cancelled = 0;
+  let healthCalls = 0;
+  const runtime = createLocalAiRuntime({
+    modelId: null,
+    probeTimeoutMs: 100,
+    fetchImpl: (url) => {
+      if (url.endsWith("/v1/models")) return headers; // Ignores AbortSignal.
+      if (url.endsWith("/health")) healthCalls += 1;
+      throw new Error("unexpected health request");
+    },
+  });
+  try {
+    const snapshot = await timeoutRace(runtime.probe(), "discovery timeout");
+    assert.equal(snapshot.state, "unavailable");
+    resolveLateHeaders({
+      ok: true,
+      body: { cancel() { cancelled += 1; return Promise.resolve(); } },
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(cancelled, 1, "late response must not leak its body");
+    assert.equal(healthCalls, 0, "late model discovery must not trigger health");
+    assert.equal(runtime.getSnapshot().state, "unavailable");
+  } finally {
+    runtime.dispose();
+  }
+});
+
+test("late completion response after dispose is canceled without publishing a result", { timeout: 2500 }, async () => {
+  let resolveLateHeaders;
+  const headers = new Promise(resolve => { resolveLateHeaders = resolve; });
+  let cancelled = 0;
+  let completionCalls = 0;
+  const runtime = createLocalAiRuntime({
+    modelId: "fixture-model",
+    fetchImpl: (url) => {
+      if (url.endsWith("/health")) return Promise.resolve({ ok: true });
+      if (url.endsWith("/v1/chat/completions")) {
+        completionCalls += 1;
+        return headers; // Deliberately ignores AbortSignal.
+      }
+      throw new Error("unexpected endpoint");
+    },
+  });
+  await runtime.probe();
+  const active = runtime.generate({ prompt: "must not return after dispose" });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(completionCalls, 1);
+  runtime.dispose();
+  await assert.rejects(() => timeoutRace(active, "dispose before headers"), /disposed/);
+  resolveLateHeaders({
+    ok: true,
+    body: { cancel() { cancelled += 1; return Promise.resolve(); } },
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(cancelled, 1, "late inference body must be canceled");
+  assert.equal(completionCalls, 1, "no hidden retry");
+});

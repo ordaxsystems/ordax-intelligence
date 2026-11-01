@@ -238,17 +238,24 @@ async function fetchWithTimeout(
   const timer = setTimeout(() => controller.abort(), milliseconds);
   try {
     if (controller.signal.aborted) throw new Error("Local AI inference request cancelled");
-    const response = await Promise.race([
-      // The URL gate protects only the initial destination. Fetch follows
-      // HTTP redirects by default, allowing a local server to reroute a
-      // prompt or probe to another origin. Refuse redirects at the transport.
-      Promise.resolve().then(() => fetchImpl(url, {
-        ...options,
-        redirect: "error",
-        signal: controller.signal,
-      })),
-      aborted,
-    ]);
+    // The URL gate protects only the initial destination. Fetch follows
+    // HTTP redirects by default, allowing a local server to reroute a
+    // prompt or probe to another origin. Refuse redirects at the transport.
+    const pendingFetch = Promise.resolve().then(() => fetchImpl(url, {
+      ...options,
+      redirect: "error",
+      signal: controller.signal,
+    }));
+    // Even after the timeout/abort race rejects, a noncooperative adapter
+    // can deliver headers later. Close that body rather than leaving an
+    // orphaned response/connection behind. Never await this late cleanup.
+    void pendingFetch.then(
+      (lateResponse) => {
+        if (controller.signal.aborted) cancelResponseBody(lateResponse);
+      },
+      () => {},
+    );
+    const response = await Promise.race([pendingFetch, aborted]);
     activeResponse = response;
     if (controller.signal.aborted) throw new Error("Local AI inference request cancelled");
     // Also refuse a nonstandard injected adapter that reports a followed
