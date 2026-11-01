@@ -1,5 +1,6 @@
 import { requireContractPort } from "../contract-bindings.mjs";
 import { bindLocalAiStreamContracts } from "./completion-stream.mjs";
+import { notifySnapshotListeners } from "../snapshot-notification.mjs";
 
 export function bindLocalAiContracts(localAi) {
   requireContractPort("localAi",localAi,"LOCAL_AI_PORT_SCHEMA","ordax.local-ai/1",["validateLocalAiEngineId","validateLocalAiModelId","validateLocalAiRequest","validateLocalAiResponseText","validateLocalAiSnapshot"]);
@@ -332,7 +333,7 @@ function createLocalAiRuntime({
   const publish = (next) => {
     if (destroyed) return;
     snapshot = validateLocalAiSnapshot(next);
-    for (const listener of listeners) listener(snapshot);
+    notifySnapshotListeners(listeners, snapshot);
   };
 
   const requestStatus = (url, options, milliseconds, label) => fetchWithTimeout(
@@ -548,6 +549,9 @@ function createLocalAiRuntime({
       }
       activityRevision += 1;
       publish({ ...snapshot, state: "busy" });
+      // A subscriber may synchronously dispose the runtime on busy.
+      // Never initiate HTTP after disposal has been requested.
+      assertAlive();
       try {
         const messages = input.systemPrompt === null
           ? [{ role: "user", content: input.prompt }]
@@ -603,6 +607,9 @@ function createLocalAiRuntime({
           );
         }
         publish({ ...snapshot, state: "ready" });
+        // Ready subscribers may also dispose synchronously. A disposed
+        // runtime must never return a newly approved inference result.
+        assertAlive();
         return Object.freeze({ text, engineId: activeEngineId, modelId: activeModelId });
       } catch (error) {
         if (!destroyed) await revalidateAfterInferenceFailure();
