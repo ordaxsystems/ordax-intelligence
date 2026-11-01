@@ -122,3 +122,22 @@ test("source package refuses an empty portable source tree", t => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Portable source tree contains no modules/);
 });
+
+
+test("source handoff never follows existing or dangling archive/receipt symlinks", { skip: process.platform === "win32" }, async t => {
+  for (const output of ["receipt.json", "ordax-intelligence-source-test.0.tar"]) {
+    await t.test(output, subtest => {
+      const root = fixture(subtest);
+      mkdirSync(join(root, "dist"));
+      const external = join(root, "external");
+      mkdirSync(external);
+      // A dangling symlink would be missed by existsSync() but is visible
+      // through lstatSync() and would otherwise create a file outside dist.
+      symlinkSync("../external/target", join(root, "dist", output), "file");
+      const result = run(root);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /Non-regular file forbidden/);
+      assert.equal(existsSync(join(external, "target")), false);
+    });
+  }
+});
