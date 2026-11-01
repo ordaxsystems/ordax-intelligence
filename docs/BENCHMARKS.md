@@ -39,3 +39,6 @@ A CI executa `tests/test_local_http_benchmark.py` com servidor HTTP local **fixt
 
 Os [testes F0](evidence/INTELLIGENCE-001-F0-BASELINE.md) usam contratos e serviços do OS com backend de inferência simulado: validam o contexto, escopos e a autoridade, **não** a compreensão do modelo local, nem latência, embeddings ou inferência física. O próximo benchmark de qualidade requer modelo real e Windows físico, com resultados por caso.
 
+## INTELLIGENCE-001 — canários de respostas da Aura
+
+O scorer offline `tools/evaluation/score-contextual-f0.mjs` reutiliza os **seis casos** de `tests/fixtures/contextual-f0.json`. Gere template com `--template`, preencha somente com respostas obtidas do fluxo autorizado OS/Aura e pontue com `--score respostas.json`. A ferramenta não faz rede, não aceita arquivos gigantes ou aliases simbólicos e não revela os textos no relatório. Saída `0` = todos os **canários lexicais** passaram; `1` = houve falhas; `2` = dados inválidos. Ela **sempre** marca `physicalModelAttested=false` e `semanticQualityQualified=false`; não substitui medição física, validação de contexto, aferição de precisão humana nem o benchmark HTTP já existente. Veja [evidência F0](evidence/INTELLIGENCE-001-F0-BASELINE.md).
