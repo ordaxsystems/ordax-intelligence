@@ -200,13 +200,36 @@ def prove_real_offline_inference(binary, model_file, model_id, work):
         key_file.unlink(missing_ok=True)
 
 
+def validate_proof_paths(out_dir, cache_dir):
+    """Validate proof destinations before downloads, native builds or cleanup."""
+    output = Path(out_dir).expanduser().absolute()
+    cache = Path(cache_dir).expanduser().absolute()
+    workspace = cache.parent / "ordax-windows-inference-native-build"
+    if (
+        output == cache or output in cache.parents or cache in output.parents
+        or output == workspace or output in workspace.parents or workspace in output.parents
+        or cache == workspace or cache in workspace.parents or workspace in cache.parents
+    ):
+        raise canonical.RuntimeBuildError(
+            "Windows proof output, model cache and build workspace must not overlap"
+        )
+    canonical.require_real_directory(output.parent, "Windows proof output parent")
+    if output.is_symlink() or output.exists():
+        raise canonical.RuntimeBuildError("Windows proof output must be a new real directory")
+    cache = canonical.require_real_directory(cache, "Windows inference cache", create=True)
+    if workspace.is_symlink() or workspace.exists():
+        raise canonical.RuntimeBuildError("Windows build workspace must start absent and clean")
+    return output, cache
+
+
 @contextmanager
 def fixed_windows_workspace(cache_dir: Path):
     # Build path is an input to upstream __FILE__ assertions/log strings.
     # Reuse one stable absolute source location for each fully independent,
     # clean compilation, rather than a new randomized TemporaryDirectory.
     # The output of each build is copied to a separate, immutable receipt.
-    workspace = Path(cache_dir).resolve().parent / "ordax-windows-inference-native-build"
+    cache_dir = canonical.require_real_directory(cache_dir, "Windows inference cache")
+    workspace = cache_dir.parent / "ordax-windows-inference-native-build"
     if workspace.exists() or workspace.is_symlink():
         raise canonical.RuntimeBuildError("Windows build workspace must start absent and clean")
     workspace.mkdir(mode=0o700)
@@ -220,10 +243,10 @@ def prove(os_source, out_dir, cache_dir):
     assert_windows_x64()
     canonical.configure_os_source(os_source)
     lock = canonical.load_source_lock()
-    out_dir = Path(out_dir).resolve()
-    if out_dir.exists():
-        raise canonical.RuntimeBuildError("Windows proof output must be a new directory")
-    cache_dir = Path(cache_dir).resolve()
+    # Match the Linux builder: dirty OS policy/license bytes must fail BEFORE
+    # the expensive model download and two independent native compilations.
+    os_source_commit = canonical.attest_os_committed_inputs(lock)
+    out_dir, cache_dir = validate_proof_paths(out_dir, cache_dir)
     with fixed_windows_workspace(cache_dir) as temp:
         folder, files, version = build_windows_engine(lock, temp, cache_dir)
         model = download_verified_model(lock, cache_dir)
@@ -241,7 +264,7 @@ def prove(os_source, out_dir, cache_dir):
             "$schema": "prototype-ordax.windows-inference-candidate/1",
             "platform": "windows-x86_64", "binary_format": "PE",
             "engine_source_commit": lock["engine"]["commit"],
-            "os_source_commit": canonical.source_commit(),
+            "os_source_commit": os_source_commit,
             "os_source_lock_sha256": canonical.sha256_file(canonical.SOURCE_LOCK),
             "model": {"id": lock["model"]["id"], "sha256": lock["model"]["sha256"],
                       "size_bytes": lock["model"]["size_bytes"]},
