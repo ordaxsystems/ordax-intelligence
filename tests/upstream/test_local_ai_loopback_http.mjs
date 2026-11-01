@@ -122,6 +122,46 @@ test("a real HTTP buffered response carrying tool calls is rejected, never promo
   local.dispose();
 });
 
+test("real buffered loopback rejects choice-level hidden authority and mixed SSE shape", async (t) => {
+  const forbidden = [
+    ["choice.tool_call_id", choice => { choice.tool_call_id = "call-hidden"; }],
+    ["choice.refusal", choice => { choice.refusal = "refusal-marker"; }],
+    ["choice.delta", choice => {
+      choice.delta = {
+        tool_calls: [{ id: "call-hidden", type: "function", function: { name: "execute", arguments: "{}" } }],
+      };
+    }],
+  ];
+  for (const [name, mutate] of forbidden) {
+    await t.test(name, async (subtest) => {
+      let completions = 0;
+      const endpoint = await loopback(subtest, (request, response) => {
+        assert.equal(request.url, "/v1/chat/completions");
+        completions += 1;
+        const choice = {
+          index: 0,
+          finish_reason: "stop",
+          message: { role: "assistant", content: "untrusted answer" },
+        };
+        mutate(choice);
+        json(response, { model: MODEL, choices: [choice] });
+      });
+      const runtime = createLocalAiRuntime({ endpoint, modelId: MODEL });
+      try {
+        assert.equal((await runtime.probe()).state, "ready");
+        await assert.rejects(
+          runtime.generate({ prompt: "Somente texto consultivo" }),
+          /completion.*(invalid|unsupported|authority)/i,
+        );
+        assert.equal(completions, 1, "forbidden metadata must not trigger retries");
+        assert.equal(runtime.getSnapshot().state, "ready");
+      } finally {
+        runtime.dispose();
+      }
+    });
+  }
+});
+
 test("without a discovered model the real loopback remains unavailable, with no inference POST", async (t) => {
   let completionPosts = 0;
   const endpoint = await loopback(t, (request, response) => {
