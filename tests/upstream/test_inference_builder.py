@@ -1,8 +1,11 @@
 # Regression adapted from ordaxsystems/ordax-os/tests/test_local_ai_runtime_builder.py @ 0c8b4a55cba2c6ae42fa0425706939568360e04e
+import concurrent.futures
 import importlib.util
 import hashlib
+import io
 import json
 import subprocess
+import threading
 from pathlib import Path
 import tempfile
 import unittest
@@ -444,12 +447,97 @@ class LocalAiRuntimeBuilderTests(unittest.TestCase):
             self.assertEqual(outside.read_bytes(), data)
 
             model.unlink()
+            # A legacy fixed .part path may still be a symlink from an old
+            # checkout. The new unique downloads never use or modify it.
             partial = root / "model.gguf.part"
             partial.symlink_to(outside)
-            with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "partial model cache.*symlink"):
-                BUILDER.download_exact("https://invalid.example/model", model, digest, len(data))
+            with mock.patch.object(
+                BUILDER.urllib.request, "urlopen",
+                return_value=io.BytesIO(data),
+            ):
+                self.assertEqual(
+                    BUILDER.download_exact(
+                        "https://invalid.example/model", model, digest, len(data)
+                    ), model,
+                )
+            self.assertEqual(model.read_bytes(), data)
             self.assertEqual(outside.read_bytes(), data)
             self.assertTrue(partial.is_symlink())
+            self.assertEqual(list(root.glob("model.gguf.part-*.tmp")), [])
+
+    def test_parallel_model_downloads_use_independent_parts_and_share_verified_cache(self):
+        class ConcurrentResponse(io.BytesIO):
+            def __init__(self, content, barrier):
+                super().__init__(content)
+                self.barrier = barrier
+                self.first_read = True
+
+            def read(self, amount=-1):
+                if self.first_read:
+                    self.first_read = False
+                    # Synchronize *after* both writers have opened their
+                    # temporary files, exposing the original fixed .part race.
+                    self.barrier.wait(timeout=10)
+                return super().read(amount)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            model = root / "shared.gguf"
+            data = b"exact pinned offline GGUF fixture"
+            digest = hashlib.sha256(data).hexdigest()
+            barrier = threading.Barrier(2)
+            with mock.patch.object(
+                BUILDER.urllib.request, "urlopen",
+                side_effect=lambda _request, timeout: ConcurrentResponse(data, barrier),
+            ):
+                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as workers:
+                    results = list(workers.map(
+                        lambda _: BUILDER.download_exact(
+                            "https://invalid.example/model", model, digest, len(data),
+                        ), range(2),
+                    ))
+            self.assertEqual(results, [model, model])
+            self.assertEqual(model.read_bytes(), data)
+            self.assertEqual(list(root.glob("shared.gguf.part-*.tmp")), [])
+            self.assertFalse((root / "shared.gguf.part").exists())
+
+    def test_failed_model_download_preserves_existing_cache_and_cleans_unique_part(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            model = root / "model.gguf"
+            old = b"previous invalid cache candidate"
+            expected = b"correct reviewed model content"
+            model.write_bytes(old)
+            wrong = b"x" * len(expected)
+            digest = hashlib.sha256(expected).hexdigest()
+            with mock.patch.object(
+                BUILDER.urllib.request, "urlopen", return_value=io.BytesIO(wrong),
+            ):
+                with self.assertRaisesRegex(
+                    BUILDER.RuntimeBuildError, "download digest mismatch"
+                ):
+                    BUILDER.download_exact(
+                        "https://invalid.example/model", model, digest, len(expected)
+                    )
+            self.assertEqual(model.read_bytes(), old)
+            self.assertEqual(list(root.glob("model.gguf.part-*.tmp")), [])
+
+    def test_model_cache_directory_target_fails_before_network(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            directory_target = root / "unexpected.gguf"
+            directory_target.mkdir()
+            with mock.patch.object(
+                BUILDER.urllib.request, "urlopen",
+                side_effect=AssertionError("unexpected network"),
+            ):
+                with self.assertRaisesRegex(
+                    BUILDER.RuntimeBuildError, "cached model path must be a regular file",
+                ):
+                    BUILDER.download_exact(
+                        "https://invalid.example/model",
+                        directory_target, "0" * 64, 123,
+                    )
 
     def test_output_cache_overlaps_are_rejected_before_any_download(self):
         with tempfile.TemporaryDirectory() as directory:

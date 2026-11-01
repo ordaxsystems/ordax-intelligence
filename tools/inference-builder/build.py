@@ -307,46 +307,67 @@ def download_exact(url, destination, expected_sha256, expected_size):
     require_real_directory(destination.parent, "model cache", create=True)
     if destination.is_symlink():
         raise RuntimeBuildError("cached model path must not be a symlink")
+    if destination.exists() and not destination.is_file():
+        raise RuntimeBuildError("cached model path must be a regular file")
     if (
         destination.is_file()
         and destination.stat().st_size == expected_size
         and sha256_file(destination) == expected_sha256
     ):
         return destination
-    if destination.exists() or destination.is_symlink():
-        destination.unlink()
-    part = destination.with_name(destination.name + ".part")
-    if part.is_symlink():
-        raise RuntimeBuildError("partial model cache path must not be a symlink")
-    part.unlink(missing_ok=True)
+
+    # A fixed .part path is unsafe when independent Windows/Linux builds share
+    # the same cache: either process can truncate or unlink the other's active
+    # download. mkstemp creates a unique, exclusive real file in this directory.
+    # Never touch a legacy .part file or publish bytes before both pins pass.
     digest = hashlib.sha256()
     total = 0
+    temporary = None
     request = urllib.request.Request(url, headers={"User-Agent": "OrdaX-local-ai-builder/1"})
     try:
-        with urllib.request.urlopen(request, timeout=180) as response, part.open("wb") as output:
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > expected_size:
-                    raise RuntimeBuildError("download exceeded exact pinned size")
-                digest.update(chunk)
-                output.write(chunk)
+        with tempfile.NamedTemporaryFile(
+            mode="wb", prefix=destination.name + ".part-",
+            suffix=".tmp", dir=destination.parent, delete=False,
+        ) as output:
+            temporary = Path(output.name)
+            with urllib.request.urlopen(request, timeout=180) as response:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > expected_size:
+                        raise RuntimeBuildError("download exceeded exact pinned size")
+                    digest.update(chunk)
+                    output.write(chunk)
+
+        if total != expected_size:
+            raise RuntimeBuildError(f"download size mismatch: expected={expected_size} actual={total}")
+        actual = digest.hexdigest()
+        if actual != expected_sha256:
+            raise RuntimeBuildError(f"download digest mismatch: expected={expected_sha256} actual={actual}")
+
+        if destination.is_symlink():
+            raise RuntimeBuildError("cached model path must not be a symlink")
+        # Another verified download may have won the race. Reuse its exact
+        # bytes instead of replacing an in-use Windows cache file.
+        if (
+            destination.is_file()
+            and destination.stat().st_size == expected_size
+            and sha256_file(destination) == expected_sha256
+        ):
+            return destination
+        if destination.exists() and not destination.is_file():
+            raise RuntimeBuildError("cached model path must be a regular file")
+        temporary.replace(destination)  # Atomic promotion on the same filesystem.
+        return destination
+    except RuntimeBuildError:
+        raise
     except Exception as exc:
-        part.unlink(missing_ok=True)
-        if isinstance(exc, RuntimeBuildError):
-            raise
         raise RuntimeBuildError(f"download failed: {url}: {exc}") from exc
-    if total != expected_size:
-        part.unlink(missing_ok=True)
-        raise RuntimeBuildError(f"download size mismatch: expected={expected_size} actual={total}")
-    actual = digest.hexdigest()
-    if actual != expected_sha256:
-        part.unlink(missing_ok=True)
-        raise RuntimeBuildError(f"download digest mismatch: expected={expected_sha256} actual={actual}")
-    part.replace(destination)
-    return destination
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def prepare_engine_mirror(lock, cache_dir):
