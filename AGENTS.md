@@ -42,3 +42,7 @@ O `src/intelligence/runtime.mjs` só recebe contextos previamente autorizados pe
 ### Orçamento de contexto compartilhado (INTELLIGENCE-001)
 
 O producer **não pode truncar o primeiro item longo e descartar automaticamente todo contexto posterior**: o OS pode acrescentar Apps/intents após Memory e documentos. Preservar a divisão equilibrada por custo **serializado**, o limite `LOCAL_AI_MAX_PROMPT_CHARS` e a ordem recebida do OS; manter truncamento JSON Unicode-safe, marcadores de omissão e a integridade do pedido final. O produtor não seleciona apps, não concede autoridade a `scope=system` nem implementa novo RAG. Regressões obrigatórias: `tests/upstream/test_intelligence_runtime.mjs` e a composição OS fixada em `tests/upstream/test_contextual_f0.mjs`. Documentar limitações em `docs/evidence/INTELLIGENCE-001-F0-BASELINE.md`.
+
+### Contexto ausente não equivale a aplicativo ausente
+
+A composição OS pode deixar de anexar catálogos/intents quando o orçamento upstream já estiver saturado. O produtor mantém instruções explícitas para não afirmar instalação, ausência, capacidade ou execução sem evidência atual. Preserve o teste de `systemPrompt` em `tests/upstream/test_intelligence_runtime.mjs` e o diagnóstico de saturação em `tests/upstream/test_contextual_f0.mjs`. Um teste com backend simulado **não** confirma obediência do GGUF. Documentar essa lacuna como **dependência do owner OS** em `docs/evidence/INTELLIGENCE-001-F0-BASELINE.md`; não criar outro catálogo, indexador, memória ou permissões no Intelligence.
