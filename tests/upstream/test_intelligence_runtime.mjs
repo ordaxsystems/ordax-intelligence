@@ -455,6 +455,73 @@ test("portable Intelligence follows the OS regional locale without caching the p
   }
 });
 
+test("portable Intelligence refuses to dispatch private context if locale lookup switches model", async () => {
+  let forwarded = 0;
+  const inference = inferencePort({ onGenerate() { forwarded += 1; } });
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inference,
+    getLocale() {
+      inference.publish({ state: "ready", modelId: "untrusted-model" });
+      return "pt-BR";
+    },
+  });
+  try {
+    await assert.rejects(() => intelligence.respond({
+      prompt: "Contexto secreto autorizado apenas ao modelo selecionado.",
+      context: [{ id: "private-item", scope: "document", text: "PRIVATE_CONTEXT_NEVER_FORWARD", provenance: "authorized-local" }],
+    }), /before dispatch/);
+    assert.equal(forwarded, 0, "private bytes must not reach the new model");
+    assert.equal(intelligence.getSnapshot().modelId, "untrusted-model");
+  } finally { intelligence.dispose(); }
+});
+
+test("portable Intelligence latches a locale-induced A-B-A identity change before dispatch", async () => {
+  let forwarded = 0;
+  const inference = inferencePort({ onGenerate() { forwarded += 1; } });
+  let first = true;
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inference,
+    getLocale() {
+      if (first) {
+        first = false;
+        inference.publish({ state: "ready", modelId: "intermediate-model" });
+        inference.publish({ state: "ready", modelId: "qwen-small" });
+      }
+      return "pt-BR";
+    },
+  });
+  try {
+    await assert.rejects(() => intelligence.respond({
+      prompt: "Não envie antes de verificar a troca de modelo.",
+      context: [{ id: "secret", scope: "document", text: "SECRECY_MARKER", provenance: "local" }],
+    }), /before dispatch/);
+    assert.equal(forwarded, 0, "A-B-A cannot bypass the per-request identity latch");
+    assert.equal(intelligence.getSnapshot().modelId, "qwen-small");
+    const next = await intelligence.respond({ prompt: "Pedido novo após a troca." });
+    assert.equal(next.authority, "none");
+    assert.equal(forwarded, 1, "the next request must not inherit the old latch");
+  } finally { intelligence.dispose(); }
+});
+
+test("portable Intelligence refuses to dispatch if locale lookup makes the OS backend busy", async () => {
+  let forwarded = 0;
+  const inference = inferencePort({ onGenerate() { forwarded += 1; } });
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inference,
+    getLocale() {
+      inference.publish({ state: "busy" });
+      return "pt-BR";
+    },
+  });
+  try {
+    await assert.rejects(() => intelligence.respond({
+      prompt: "Não encaminhe ao backend ocupado.",
+      context: [{ id: "private", scope: "document", text: "DO_NOT_SEND", provenance: "local" }],
+    }), /before dispatch/);
+    assert.equal(forwarded, 0, "busy backend must not receive a newly assembled private prompt");
+    assert.equal(intelligence.getSnapshot().state, "busy");
+  } finally { intelligence.dispose(); }
+});
 test("portable Intelligence refuses unsupported OS locale before sharing context with inference", async () => {
   let generated = 0;
   let locale = "unknown-locale";

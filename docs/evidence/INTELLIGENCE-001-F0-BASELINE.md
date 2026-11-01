@@ -148,3 +148,13 @@ Regressões em `tests/upstream/test_intelligence_runtime.mjs`: (1) oito document
 **Regressões:** `tests/upstream/test_intelligence_runtime.mjs` cobre troca de modelo antes do primeiro delta, troca **A → B → A** com resultado final original, troca de engine **A → B → A** no streaming, evolução legítima `ready → busy → ready`, e troca durante callback assíncrono com bloqueio do delta seguinte. O contrato permanece `authority=none`, `toolExecution=false`.
 
 **Limitação:** tokens já recebidos antes da troca não podem ser revogados. Os testes usam port simulado e não comprovam execução de modelo GGUF em Windows, nem autorizam cutover. Engine/modelo, sessão, grants e atualização física pertencem ao OS.
+
+## 12. F0 — fechar janela entre montagem do input e envio (2026-11-01)
+
+**Defeito reproduzível no produtor:** o runtime verificava engine/modelo antes de construir o objeto enviado à Local AI, mas construía `systemPrompt` chamando `getLocale()` depois da verificação. Caso a consulta regional publicasse uma troca do modelo, o produtor poderia chamar `inference.generate` já com o contexto autorizado **sob uma identidade diferente** e só detectar o erro quando a geração terminasse. Mesmo a proteção por notificações implementada na etapa anterior rejeitava a saída, mas não garantia recusa do envio.
+
+**Correção:** o produtor monta o input completo primeiro e executa uma checagem nova do snapshot **imediatamente antes do dispatch**, exigindo `ready`, identidade igual à rota e ausência de alteração observada (inclusive ciclo A → B → A). Nenhum privilégio, catálogo ou gerenciador é introduzido; o port continua controlado pelo OS. Falha nessa verificação significa **zero chamadas ao backend** e nenhum contexto encaminhado.
+
+**Provas de compatibilidade com o checkout OS fixado:** `tests/upstream/test_intelligence_runtime.mjs` verifica três regressões: (1) `getLocale()` altera `modelId` e o backend recebe zero requisições; (2) `getLocale()` publica modelo B e retorna A, o latch impede envio e uma requisição nova limpa não herda a falha; (3) `getLocale()` publica `busy` na mesma identidade, impedindo dispatch. Continuam válidos os testes de idioma normal, troca durante streaming, cancelamento e limites do prompt.
+
+**Limitação:** validação de port simulado não demonstra que o OrdaX Desktop Windows recebeu esse produtor ou que há GGUF funcionando. As permissões e a veracidade da identidade do backend pertencem ao OS, que segue com source lock sem ativação e prova física pendente.
