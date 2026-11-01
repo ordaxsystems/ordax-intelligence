@@ -202,25 +202,43 @@ def prove_real_offline_inference(binary, model_file, model_id, work):
 
 def validate_proof_paths(out_dir, cache_dir):
     """Validate proof destinations before downloads, native builds or cleanup."""
-    output = Path(out_dir).expanduser().absolute()
-    cache = Path(cache_dir).expanduser().absolute()
-    workspace = cache.parent / "ordax-windows-inference-native-build"
-    if (
-        output == cache or output in cache.parents or cache in output.parents
-        or output == workspace or output in workspace.parents or workspace in output.parents
-        or cache == workspace or cache in workspace.parents or workspace in cache.parents
-    ):
-        raise canonical.RuntimeBuildError(
-            "Windows proof output, model cache and build workspace must not overlap"
-        )
-    canonical.require_real_directory(output.parent, "Windows proof output parent")
+    requested_output = Path(out_dir).expanduser().absolute()
+    requested_cache = Path(cache_dir).expanduser().absolute()
+
+    def overlaps(first, second):
+        return first == second or first in second.parents or second in first.parents
+
+    def reject_overlap(output, cache):
+        workspace = cache.parent / "ordax-windows-inference-native-build"
+        if (
+            overlaps(output, cache) or overlaps(output, workspace)
+            or overlaps(cache, workspace)
+        ):
+            raise canonical.RuntimeBuildError(
+                "Windows proof output, model cache and build workspace must not overlap"
+            )
+        return workspace
+
+    # Catch literal parent/child paths before any directories are created.
+    reject_overlap(requested_output, requested_cache)
+    # Validate every existing component before resolving DOS 8.3 aliases.
+    # Comparing mixed RUNNER~1 and runneradmin spellings would otherwise
+    # miss equal/overlapping paths on Windows.
+    output_parent = canonical.require_real_directory(
+        requested_output.parent, "Windows proof output parent"
+    )
+    cache_parent = canonical.require_real_directory(
+        requested_cache.parent, "Windows inference cache parent"
+    )
+    output = output_parent / requested_output.name
+    cache = cache_parent / requested_cache.name
+    workspace = reject_overlap(output, cache)
     if output.is_symlink() or output.exists():
         raise canonical.RuntimeBuildError("Windows proof output must be a new real directory")
     cache = canonical.require_real_directory(cache, "Windows inference cache", create=True)
     if workspace.is_symlink() or workspace.exists():
         raise canonical.RuntimeBuildError("Windows build workspace must start absent and clean")
     return output, cache
-
 
 @contextmanager
 def fixed_windows_workspace(cache_dir: Path):
