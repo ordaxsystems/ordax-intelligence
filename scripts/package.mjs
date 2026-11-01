@@ -8,6 +8,7 @@ const files = [];
 function visit(directory) {
  for (const item of readdirSync(directory,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name,"en"))) {
   const path=join(directory,item.name);
+  if (item.isSymbolicLink()) throw Error("Source package refuses symbolic links: " + path);
   if (item.isDirectory()) visit(path);
   else if(item.isFile() && path.endsWith(".mjs")) files.push(path.replaceAll("\\","/"));
  }
@@ -39,8 +40,9 @@ mkdirSync("dist",{recursive:true});
 const dest=join("dist",receipt.archive),receiptPath=join("dist","receipt.json");
 if(process.argv.includes("--verify")){
   const old=readFileSync(dest);
-  const prior=JSON.parse(readFileSync(receiptPath,"utf8"));
-  if(!old.equals(artifact)||prior.sha256!==receipt.sha256||prior.size!==receipt.size){throw Error("Source artifact is not reproducible");}
+  const expectedReceipt=Buffer.from(JSON.stringify(receipt,null,2)+"\n");
+  const actualReceipt=readFileSync(receiptPath);
+  if(!old.equals(artifact)||!actualReceipt.equals(expectedReceipt)){throw Error("Source artifact or provenance receipt is not reproducible");}
   console.log("Verified identical bytes:",receipt.sha256);
 }else{
   writeFileSync(dest,artifact);writeFileSync(receiptPath,JSON.stringify(receipt,null,2)+"\n");
