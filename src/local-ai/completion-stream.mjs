@@ -9,30 +9,39 @@ const MAX_STREAM_EVENTS = 16384;
 // OpenAI-compatible, data-only SSE. Tokens are tentative until [DONE] and
 // finish_reason are checked; callers must not persist or execute partial text.
 async function readLocalAiCompletionStream(response, { modelId, onDelta, signal = null } = {}) {
-  if (typeof onDelta !== "function") {
-    throw new TypeError("Local AI streaming requires onDelta()");
-  }
-  const expectedModel = validateLocalAiModelId(modelId);
-  const mime = response?.headers?.get?.("content-type");
-  if (typeof mime !== "string" || !/^text\/event-stream(?:\s*;|\s*$)/i.test(mime.trim())) {
-    throw new Error("Local AI streaming requires text/event-stream");
-  }
-  const rawLength = response.headers.get("content-length");
-  if (typeof rawLength === "string" && /^\d+$/.test(rawLength.trim())) {
-    if (Number(rawLength) > LOCAL_AI_MAX_COMPLETION_RESPONSE_BYTES) {
-      throw new Error("Local AI streaming response exceeds its byte limit");
-    }
-  }
-  const body = response.body;
-  if (!body || typeof body.getReader !== "function") {
-    throw new Error("Local AI streaming requires a bounded response stream");
-  }
-
+  const body = response?.body;
   const assertActive = () => {
     if (signal?.aborted) throw new Error("Local AI streaming request cancelled");
   };
-  assertActive();
-  const reader = body.getReader();
+  let expectedModel;
+  let reader;
+  try {
+    if (typeof onDelta !== "function") {
+      throw new TypeError("Local AI streaming requires onDelta()");
+    }
+    expectedModel = validateLocalAiModelId(modelId);
+    const mime = response?.headers?.get?.("content-type");
+    if (typeof mime !== "string" || !/^text\/event-stream(?:\s*;|\s*$)/i.test(mime.trim())) {
+      throw new Error("Local AI streaming requires text/event-stream");
+    }
+    const rawLength = response.headers.get("content-length");
+    if (typeof rawLength === "string" && /^\d+$/.test(rawLength.trim())) {
+      if (Number(rawLength) > LOCAL_AI_MAX_COMPLETION_RESPONSE_BYTES) {
+        throw new Error("Local AI streaming response exceeds its byte limit");
+      }
+    }
+    if (!body || typeof body.getReader !== "function") {
+      throw new Error("Local AI streaming requires a bounded response stream");
+    }
+    assertActive();
+    reader = body.getReader();
+  } catch (error) {
+    // A response may already own a live HTTP body when metadata is rejected.
+    // Release it before returning; once a reader exists the normal finally
+    // below owns cancellation and backpressure.
+    try { void Promise.resolve(body?.cancel?.()).catch(() => {}); } catch {}
+    throw error;
+  }
   // A fetch adapter or readable body can ignore AbortSignal while reader.read()
   // (or an async consumer callback) is pending. Race each wait with the
   // transport cancellation instead of trusting that upstream will settle.
