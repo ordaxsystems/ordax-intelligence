@@ -275,6 +275,35 @@ test("F0 scenarios use actual pinned OS app/memory wrappers and the portable Int
     + "; semantic grounding accuracy: NOT MEASURED (no real model)");
 });
 
+test("F0: pinned OS Apps + Memory context survives verbose authorized documents", async () => {
+  const harness = compose();
+  try {
+    const context = Array.from({ length: 4 }, (_, i) => ({
+      id: "long-document-" + i, scope: "document",
+      text: "Documento autorizado " + i + ": " + "\nA".repeat(4000),
+      provenance: "fixture-local-document",
+    }));
+    const result = await harness.aura.respond({
+      prompt: "Crie uma nota chamada Ideias.", context,
+    });
+    assert.equal(result.authority, "none");
+    assert.equal(harness.inference.calls.length, 1);
+    const forwarded = harness.inference.calls[0].request.prompt;
+    assert.ok(forwarded.length <= 32768, "canonical local input limit");
+    assert.match(forwarded, /\[document:long-document-0\]/);
+    assert.match(forwarded, /\[system:ordax-application-catalog\]/);
+    assert.match(forwarded, /\[system:ordax-application-detail:notes\]/);
+    assert.match(forwarded, /\[system:ordax-application-action-capabilities\]/);
+    assert.match(forwarded, /notes\.create-note/);
+    assert.match(forwarded, /executionAuthorized/);
+    assert.ok(!forwarded.includes("SPACE_B_PRIVATE_MARKER"));
+    assert.ok(forwarded.endsWith("User request:\nCrie uma nota chamada Ideias."));
+    assert.ok(forwarded.indexOf("[document:long-document-0]") < forwarded.indexOf("[system:ordax-application-catalog]"),
+      "the Intelligence producer does not reorder context selected by OS");
+  } finally {
+    harness.core.dispose();
+  }
+});
 test("F0: OS app-context owner refuses caller spoofing its system projection", async () => {
   const harness = compose();
   try {
