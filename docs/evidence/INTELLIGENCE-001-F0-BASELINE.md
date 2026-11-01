@@ -138,3 +138,13 @@ A correção calcula o menor custo viável de cada item e, somente quando a dist
 Regressões em `tests/upstream/test_intelligence_runtime.mjs`: (1) oito documentos autorizados com metadados máximos antes do catálogo de apps, solicitação no tamanho máximo, catálogo ainda no prompt e sem extrapolação; (2) fontes pequenas nas duas extremidades preservadas na ordem do OS, com documento intermediário inviável omitido. A suíte F0 de Apps/Memory e os controles de privacidade permanecem inalterados.
 
 **Prova limitada:** as verificações exercitam a composição de prompt em backend simulado, não entendimento do modelo local físico. O OS continua dono de seleção/escopo/versão do catálogo, e um item não entregue pelo OS **não pode ser recuperado** por redistribuição no produtor.
+
+## 11. F0 — identidade de motor/modelo durante geração (2026-11-01)
+
+**Defeito no produtor:** após conferir engine/modelo antes da chamada Local AI, o runtime validava apenas os campos do resultado final. Se o port mudasse de identidade durante a geração e voltasse ao modelo anterior (**A → B → A**), a resposta poderia ser aceita. Durante streaming, deltas posteriores à troca podiam chegar sem a checagem correspondente.
+
+**Correção com owner preservado:** o Intelligence não mantém catálogo ou pin de modelos; observa o port Local AI **autorizado pelo OS** e confere snapshot vivo antes/depois de cada delta e antes do resultado. Mudança de engine/modelId ou perda de prontidão invalidam a requisição, mesmo quando a identidade volta ao valor original. Transições `ready/busy` no mesmo modelo são aceitas. O observador por requisição é liberado em `finally`.
+
+**Regressões:** `tests/upstream/test_intelligence_runtime.mjs` cobre troca de modelo antes do primeiro delta, troca **A → B → A** com resultado final original, troca de engine **A → B → A** no streaming, evolução legítima `ready → busy → ready`, e troca durante callback assíncrono com bloqueio do delta seguinte. O contrato permanece `authority=none`, `toolExecution=false`.
+
+**Limitação:** tokens já recebidos antes da troca não podem ser revogados. Os testes usam port simulado e não comprovam execução de modelo GGUF em Windows, nem autorizam cutover. Engine/modelo, sessão, grants e atualização física pertencem ao OS.
