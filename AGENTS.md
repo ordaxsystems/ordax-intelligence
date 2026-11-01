@@ -38,3 +38,7 @@ Ao alterar `src/intelligence/runtime.mjs`, preserve `getLocale` dinâmico **e a 
 ### Contexto da Aura: delimitação estrutural no produtor
 
 O `src/intelligence/runtime.mjs` só recebe contextos previamente autorizados pelo OS. Sua serialização **nunca** deve incorporar `text`, `id` ou `provenance` como linhas de prompt brutas: preservar JSON strings de linha única, IDs/proveniências escapados e orçamento de input medido após escape/truncamento Unicode seguro. Qualquer mudança no rendering exige regressão adversarial em `tests/upstream/test_intelligence_runtime.mjs` para `User request:`, `Intent:`, labels falsificadas, `CR/LF/NEL/U+2028/U+2029`, preservação do pedido real e limites do modelo. O modelo continua consultivo, e o OS é o único owner de escopo/autorizações.
+
+### Orçamento de contexto compartilhado (INTELLIGENCE-001)
+
+O producer **não pode truncar o primeiro item longo e descartar automaticamente todo contexto posterior**: o OS pode acrescentar Apps/intents após Memory e documentos. Preservar a divisão equilibrada por custo **serializado**, o limite `LOCAL_AI_MAX_PROMPT_CHARS` e a ordem recebida do OS; manter truncamento JSON Unicode-safe, marcadores de omissão e a integridade do pedido final. O produtor não seleciona apps, não concede autoridade a `scope=system` nem implementa novo RAG. Regressões obrigatórias: `tests/upstream/test_intelligence_runtime.mjs` e a composição OS fixada em `tests/upstream/test_contextual_f0.mjs`. Documentar limitações em `docs/evidence/INTELLIGENCE-001-F0-BASELINE.md`.
