@@ -277,3 +277,11 @@ Isto **não** modifica contratos do OS, autorizações, RAG, runtime de inferên
 O `renderRequest()` portátil foi ajustado para impedir starvation no prompt: documentos/Memory extensos que aparecem no início da composição do OS não podem, quando há orçamento suficiente para metadados, bloquear sistematicamente as projeções de apps anexadas depois. O produtor calcula custos serializados e distribui capacidade com teto equilibrado entre os contextos **já autorizados**, sem alterar sua ordem, scope, owner nem criar ranking/Memory paralelos. O pedido de usuário permanece integral.
 
 Prova em `tests/upstream/test_intelligence_runtime.mjs` (Memory grande + catálogo/detalhe de app) e `tests/upstream/test_contextual_f0.mjs` (composição real do OS Apps+Memory e documentos longos). A evidência e limitações ficam em [F0-BASELINE](evidence/INTELLIGENCE-001-F0-BASELINE.md). Sem prova de modelo Windows físico, sem mudança de pin, motor, indexação vetorial, OS ou repositórios de outros engenheiros; F0 permanece parcial.
+
+## INTELLIGENCE-001 F0 — incompletude a montante e abstenção consultiva (2026-11-01)
+
+Inspeção de leitura em Windows autorizado encontrou um dispositivo online sem backend de inferência nos processos/portas consultados. Nenhuma prova da competência de um modelo local foi executada. O source lock de `ordax-os/main` permanece `a39c8ddc…`, em `integration-candidate`, sem cutover/ativação.
+
+Na composição canônica OS, `application-context.mjs` pode omitir o catálogo de apps **antes** de chamar o Intelligence quando `INTELLIGENCE_MAX_CONTEXT_TOTAL_CHARS` já estiver consumido. Balancear o prompt no produtor não recupera essa perda de evidências. O teste F0 reproduz a saturação no checkout fixado do OS e registra a condição como dependência upstream.
+
+O produtor passou a instruir o modelo a não afirmar instalação/ausência/capacidade ou ações concluídas sem contexto autorizado atual. Isso não garante a resposta do GGUF; são necessárias avaliação física e correção do orçamento pela equipe do **`ordax-os`**. Ver [evidência F0](evidence/INTELLIGENCE-001-F0-BASELINE.md). Sem alteração de source lock, aplicação Windows, RAG, grants ou repositórios de outros engenheiros.
