@@ -20,6 +20,133 @@ BUILDER.configure_os_source(OS_ROOT)
 
 
 class LocalAiRuntimeBuilderTests(unittest.TestCase):
+    def test_provenance_commit_must_match_real_os_checkout_even_if_env_is_set(self):
+        import subprocess
+        actual = subprocess.check_output(
+            ["git", "-C", str(OS_ROOT), "rev-parse", "--verify", "HEAD"],
+            text=True,
+        ).strip().lower()
+        self.assertRegex(actual, r"^[0-9a-f]{40}$")
+        with mock.patch.dict(BUILDER.os.environ, {"ORDAX_SOURCE_COMMIT": ""}):
+            self.assertEqual(BUILDER.source_commit(), actual)
+        with mock.patch.dict(BUILDER.os.environ, {"ORDAX_SOURCE_COMMIT": actual}):
+            self.assertEqual(BUILDER.source_commit(), actual)
+        mismatched = "0" * 40 if actual != "0" * 40 else "f" * 40
+        for declared in (mismatched, "HEAD", "not-a-sha"):
+            with self.subTest(declared=declared):
+                with mock.patch.dict(BUILDER.os.environ, {"ORDAX_SOURCE_COMMIT": declared}):
+                    with self.assertRaisesRegex(
+                        BUILDER.RuntimeBuildError,
+                        "environment differs from checked-out HEAD",
+                    ):
+                        BUILDER.source_commit()
+
+    def test_os_manifest_parents_cannot_be_symlinks_even_when_files_are_regular(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "os"
+            external = root / "external-lock"
+            source.mkdir()
+            external.mkdir()
+            services = source / "system/services"
+            services.mkdir(parents=True)
+            (source / "docs/contracts").mkdir(parents=True)
+            (source / "docs/contracts/local-ai.json").write_bytes(
+                (OS_ROOT / "docs/contracts/local-ai.json").read_bytes()
+            )
+            (external / "source-lock.json").write_bytes(SOURCE_LOCK.read_bytes())
+            (services / "local-ai").symlink_to(external, target_is_directory=True)
+            with self.assertRaisesRegex(
+                BUILDER.RuntimeBuildError, "manifests.*symlink"
+            ):
+                BUILDER.configure_os_source(source)
+            # Failed validation must not replace global OS authority pointers.
+            self.assertEqual(BUILDER.SOURCE_LOCK, SOURCE_LOCK)
+            self.assertEqual(BUILDER.ROOT, OS_ROOT.resolve())
+
+    def test_os_source_parent_components_cannot_be_symlinks(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            real = root / "actual"
+            real.mkdir()
+            alias = root / "symlink"
+            alias.symlink_to(real, target_is_directory=True)
+            with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "symlink"):
+                BUILDER.configure_os_source(alias / "checkout")
+
+    def test_vendored_os_license_rejects_symlinked_ancestor_and_traversal(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            outside = root / "outside"
+            outside.mkdir()
+            (outside / "Apache-2.0.txt").write_text("not trusted")
+            (root / "third_party").mkdir()
+            (root / "third_party/licenses").symlink_to(
+                outside, target_is_directory=True
+            )
+            with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "symlink"):
+                BUILDER.require_os_source_file(
+                    root, "third_party/licenses/Apache-2.0.txt", "OS model license"
+                )
+            with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "unsafe"):
+                BUILDER.require_os_source_file(
+                    root, "../outside/Apache-2.0.txt", "OS model license"
+                )
+
+    def test_direct_download_helpers_refuse_symlinked_cache_parents_before_network(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            outside = root / "outside"
+            outside.mkdir()
+            alias = root / "cache"
+            alias.symlink_to(outside, target_is_directory=True)
+            url = "https://invalid.example/never-fetch"
+            with mock.patch.object(
+                BUILDER.urllib.request, "urlopen",
+                side_effect=AssertionError("unexpected network access"),
+            ):
+                with self.assertRaisesRegex(
+                    BUILDER.RuntimeBuildError, "model cache.*symlink"
+                ):
+                    BUILDER.download_exact(
+                        url, alias / "model.gguf", "0" * 64, 12
+                    )
+                with self.assertRaisesRegex(
+                    BUILDER.RuntimeBuildError, "bounded download destination.*symlink"
+                ):
+                    BUILDER.download_bounded(url, alias / "license.txt")
+            self.assertEqual(list(outside.iterdir()), [])
+
+    def test_bounded_download_rejects_symlink_target_before_network_and_reads_real_file(self):
+        import io
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            outside = root / "outside"
+            outside.write_bytes(b"outside unchanged")
+            destination = root / "license.txt"
+            destination.symlink_to(outside)
+            with mock.patch.object(
+                BUILDER.urllib.request, "urlopen",
+                side_effect=AssertionError("unexpected network"),
+            ):
+                with self.assertRaisesRegex(
+                    BUILDER.RuntimeBuildError, "must be a regular file"
+                ):
+                    BUILDER.download_bounded(
+                        "https://invalid.example/license", destination
+                    )
+            self.assertEqual(outside.read_bytes(), b"outside unchanged")
+            destination.unlink()
+            with mock.patch.object(
+                BUILDER.urllib.request, "urlopen",
+                return_value=io.BytesIO(b"verified license\n"),
+            ):
+                result = BUILDER.download_bounded(
+                    "https://invalid.example/license", destination
+                )
+            self.assertEqual(result, destination)
+            self.assertEqual(destination.read_bytes(), b"verified license\n")
+
     def test_source_lock_is_exact_and_runtime_is_loopback_only(self):
         lock = BUILDER.load_source_lock()
         self.assertEqual(lock["engine"]["commit"], "7ab4ee7baad2d920464cbacfad4f4b07cf111fd2")
