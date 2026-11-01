@@ -145,3 +145,11 @@ As regressões devem usar **fixtures isoladas, HTTP loopback, contratos OS reais
 ## 7. Continuidade — localidade canônica da Aura (2026-11-01)
 
 A composição Native do OS já usa a preferência regional `regional.locale` para o idioma de resposta da Aura. O produtor portátil precisava **preservar esse fluxo durante a migração**: `createIntelligenceRuntime({ getLocale })` agora lê a preferência em cada pedido, e `bindIntelligenceContracts({ regionalLocalePreference })` recebe o validador exclusivamente do OS. Sem validador ou com idioma não suportado, nenhum contexto é encaminhado ao modelo; consumidores antigos sem getter mantêm o prompt padrão. O contrato regional, a escolha do usuário e o fallback `pt-BR` pertencem ao OS. O engenheiro do OS deve injetar o validador no cutover e reconciliar a implementação legada, não criar segunda configuração de idioma no Intelligence/Aura. A matriz F0 passa a exigir pt-BR → en-US → es-ES na mesma sessão, locale inválido e preservação das regras de segurança no prompt. Isso **não certifica qualidade linguística do modelo real**; usar avaliação física em Windows para o gate F0.
+
+## 8. Bloqueios de integração descobertos durante a F0 (2026-11-01)
+
+- **Saturação antes do produtor:** o OS pode omitir `ordax-application-catalog`/detalhes quando o total canônico de contexto está cheio. O owner do `ordax-os` deve corrigir a composição/reserva de espaço e provar inclusão do conhecimento verificado, sem criar segunda fonte de verdade. O produtor não pode inferir apps com informação ausente.
+- **Adoção ainda não efetivada:** `ordax-os/main/docs/contracts/intelligence-source.json` continua fixado em `a39c8ddc…`, com `cutover_complete=false` e `activation_authorized=false`. Não promover status por CI do produtor.
+- **Prova física:** Windows autorizado foi inspecionado sem serviço ativo de inferência nas portas/processos consultados. F0 de qualidade real permanece pendente de modelo/engine aprovados e execução local documentada.
+
+O produtor possui agora uma orientação explícita de abstenção quando não houver dados autorizados, quando o contexto estiver truncado ou quando uma ação não tiver sido realizada. Isso é regra enviada ao modelo, **não prova semântica**. Consulte [F0-BASELINE](../evidence/INTELLIGENCE-001-F0-BASELINE.md). Estes gates pertencem ao owner OS; não fazer implementação paralela.
