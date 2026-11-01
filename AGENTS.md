@@ -5,6 +5,7 @@ Este repositório é a fonte canônica do código **reutilizável** de Intellige
 ## Ownership e contratos
 
 - Use exclusivamente as portas públicas `ordax.intelligence/1`, `ordax.model-router/1`, `ordax.local-ai/1`. Seus validadores são injetados pelo `ordax-os`; jamais replique aqui sua autoridade.
+- Não criar `docs/source-lock.json` nem qualquer segunda cópia de `source-lock.json` neste repositório. O pin do código portátil é `ordax-os/docs/contracts/intelligence-source.json`; o lock do motor/modelo é `ordax-os/system/services/local-ai/source-lock.json`. `npm run check` verifica essa fronteira automaticamente.
 - Identity, Space, Memory canônica, Action Gateway, permissões, Supervisor, Host Native, assinatura, ativação, atualização e rollback pertencem ao `ordax-os`. Controle do computador pertence ao `ordax-runtime`; OAuth/MCP remoto, ao `ordax-platform`; Aura visual, a `ordax-surface`/`ordax-apps`.
 - O texto gerado por modelos é dado consultivo, sem autoridade. Recuse ferramentas, pedidos de ação e respostas de backend incompletas. Nunca faça egress implícito, gerencie chaves ou instale um segundo atualizador.
 - O serviço Intelligence não é dependência de boot. Sem motor/modelo, publique indisponibilidade correta. Artefatos de modelos/motores e ABI são responsabilidades distintas do source portátil.
