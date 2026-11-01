@@ -1,9 +1,11 @@
 # Regression adapted from ordaxsystems/ordax-os/tests/test_local_ai_runtime_builder.py @ 0c8b4a55cba2c6ae42fa0425706939568360e04e
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 OS_ROOT = ROOT / "_upstream/ordax-os"
@@ -119,6 +121,105 @@ class LocalAiRuntimeBuilderTests(unittest.TestCase):
         url = BUILDER.model_url(lock)
         self.assertIn("/resolve/9447f74/", url)
         self.assertTrue(url.endswith("Qwen3.5-0.8B-Q4_0.gguf?download=true"))
+
+
+    def test_builder_rejects_symlinked_artifact_roots_before_download(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outside = root / "outside"
+            outside.mkdir()
+            out_link = root / "out-link"
+            cache_link = root / "cache-link"
+            out_link.symlink_to(outside, target_is_directory=True)
+            cache_link.symlink_to(outside, target_is_directory=True)
+            with (
+                mock.patch.object(BUILDER.platform, "system", return_value="Linux"),
+                mock.patch.object(BUILDER.platform, "machine", return_value="x86_64"),
+                mock.patch.object(BUILDER.shutil, "which", return_value="/usr/bin/true"),
+                mock.patch.object(BUILDER, "download_exact", side_effect=AssertionError("unexpected network")),
+            ):
+                for out_dir, cache_dir in (
+                    (out_link, root / "cache"),
+                    (root / "out", cache_link),
+                ):
+                    with self.subTest(out_dir=out_dir, cache_dir=cache_dir):
+                        with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "symlink"):
+                            BUILDER.build(out_dir, cache_dir)
+            self.assertEqual(list(outside.iterdir()), [], "no writes through symlink")
+
+    def test_verifier_rejects_output_root_that_is_a_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outside = root / "outside"
+            outside.mkdir()
+            output = root / "output"
+            output.symlink_to(outside, target_is_directory=True)
+            with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "symlink"):
+                BUILDER.verify(output)
+
+    def test_engine_mirror_refuses_a_link_to_an_outside_git_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache = root / "cache"
+            cache.mkdir()
+            outside = root / "other-git"
+            outside.mkdir()
+            (outside / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+            (cache / "llama.cpp.git").symlink_to(outside, target_is_directory=True)
+            lock = BUILDER.load_source_lock()
+            with mock.patch.object(BUILDER, "run", side_effect=AssertionError("git must not run")):
+                with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "mirror cache is unsafe"):
+                    BUILDER.prepare_engine_mirror(lock, cache)
+
+    def test_cached_model_and_partial_download_refuse_symlinks_without_clobbering_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outside = root / "outside"
+            data = b"verified model content"
+            outside.write_bytes(data)
+            model = root / "model.gguf"
+            model.symlink_to(outside)
+            digest = hashlib.sha256(data).hexdigest()
+            with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "cached model.*symlink"):
+                BUILDER.download_exact("https://invalid.example/model", model, digest, len(data))
+            self.assertEqual(outside.read_bytes(), data)
+
+            model.unlink()
+            partial = root / "model.gguf.part"
+            partial.symlink_to(outside)
+            with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "partial model cache.*symlink"):
+                BUILDER.download_exact("https://invalid.example/model", model, digest, len(data))
+            self.assertEqual(outside.read_bytes(), data)
+            self.assertTrue(partial.is_symlink())
+
+    def test_output_cache_overlaps_are_rejected_before_any_download(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with (
+                mock.patch.object(BUILDER.platform, "system", return_value="Linux"),
+                mock.patch.object(BUILDER.platform, "machine", return_value="x86_64"),
+                mock.patch.object(BUILDER.shutil, "which", return_value="/usr/bin/true"),
+                mock.patch.object(BUILDER, "download_exact", side_effect=AssertionError("unexpected download")),
+            ):
+                for out_dir, cache_dir in (
+                    (root / "same", root / "same"),
+                    (root / "out", root / "out" / "cache"),
+                    (root / "cache" / "out", root / "cache"),
+                ):
+                    with self.subTest(out_dir=out_dir, cache_dir=cache_dir):
+                        with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "must not overlap"):
+                            BUILDER.build(out_dir, cache_dir)
+
+    def test_directory_helper_rejects_symlinked_parent_components(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outside = root / "outside"
+            outside.mkdir()
+            linked_parent = root / "linked-parent"
+            linked_parent.symlink_to(outside, target_is_directory=True)
+            with self.assertRaisesRegex(BUILDER.RuntimeBuildError, "symlink"):
+                BUILDER.require_real_directory(linked_parent / "new-cache", "cache", create=True)
+            self.assertFalse((outside / "new-cache").exists())
 
 
 if __name__ == "__main__":
