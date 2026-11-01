@@ -133,6 +133,25 @@ function truncatedContextLine(entry, prefix, suffix, remaining) {
   return best;
 }
 
+// The OS orders and authorizes sources. If the model input budget is smaller
+// than their total serialized size, one large early item must not starve every
+// later item (especially app knowledge appended after Memory by the OS).
+// Water-filling caps each item at the same maximum line cost; short entries
+// remain whole and release their unused share for longer ones. This never
+// changes source order, owner scopes, or which context the OS authorized.
+function fairContextBudgets(costs, available) {
+  const total = costs.reduce((sum, cost) => sum + cost, 0);
+  if (total <= available) return costs;
+  let low = 0;
+  let high = Math.max(...costs);
+  while (low < high) {
+    const mid = Math.floor((low + high + 1) / 2);
+    const used = costs.reduce((sum, cost) => sum + Math.min(cost, mid), 0);
+    if (used <= available) low = mid;
+    else high = mid - 1;
+  }
+  return costs.map(cost => Math.min(cost, low));
+}
 function renderRequest(request, route) {
   const prefixLines = [
     `Intent: ${request.intent}`,
@@ -154,24 +173,35 @@ function renderRequest(request, route) {
     throw new Error("Intelligence request exceeds the local inference input budget");
   }
   let remaining = LOCAL_AI_MAX_PROMPT_CHARS - fixed.length;
-
-  for (const entry of request.context) {
+  const entries = request.context.map(entry => {
     const { prefix, suffix } = contextLineParts(entry);
     const fullLine = `${prefix}${quotedContext(entry.text)}${suffix}`;
-    const fullCost = fullLine.length + 1;
-    if (fullCost <= remaining) {
+    return { entry, prefix, suffix, fullLine, fullCost: fullLine.length + 1 };
+  });
+  const budgets = fairContextBudgets(
+    entries.map(item => item.fullCost), remaining,
+  );
+  let omitted = false;
+  for (let index = 0; index < entries.length; index += 1) {
+    const { entry, prefix, suffix, fullLine, fullCost } = entries[index];
+    const budget = budgets[index];
+    if (fullCost <= budget) {
       lines.push(fullLine);
       remaining -= fullCost;
       continue;
     }
 
-    const clipped = truncatedContextLine(entry, prefix, suffix, remaining);
+    const clipped = truncatedContextLine(entry, prefix, suffix, budget);
     if (clipped !== null) {
       lines.push(clipped);
-    } else if (CONTEXT_OMITTED_MARKER.length + 1 <= remaining) {
-      lines.push(CONTEXT_OMITTED_MARKER);
+      remaining -= clipped.length + 1;
+    } else {
+      omitted = true;
     }
-    break;
+  }
+  // If not even a short escaped item fits, signal omission if possible.
+  if (omitted && CONTEXT_OMITTED_MARKER.length + 1 <= remaining) {
+    lines.push(CONTEXT_OMITTED_MARKER);
   }
 
   lines.push(...tailLines);

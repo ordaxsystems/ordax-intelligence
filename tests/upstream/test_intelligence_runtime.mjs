@@ -239,7 +239,7 @@ test("Intelligence budgets escaped control characters and preserves parseable Un
     assert.equal(lines.filter(line => line === "User request:").length, 1);
     const contexts = lines.filter(line => line.startsWith("- ["));
     assert.ok(contexts.length >= 1);
-    assert.ok(contexts.length < context.length);
+    assert.equal(contexts.length, context.length, "later bounded context should remain represented under shared budgeting");
     for (const line of contexts) {
       assert.match(line, /^- \[document:escaped-\d+\] "(?:\\.|[^"\\])*"(?: … \[truncated; remaining context omitted by local input budget\])? \(provenance: fixture\)$/u);
       const encodedText = line.match(/^-\s*\[document:escaped-\d+\]\s*("(?:\\.|[^"\\])*")/u)?.[1];
@@ -252,6 +252,68 @@ test("Intelligence budgets escaped control characters and preserves parseable Un
   }
 });
 
+test("Intelligence preserves later OS application context after large authorized Memory entries", async () => {
+  let generated = null;
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inferencePort({ onGenerate(request) { generated = request; } }),
+  });
+  try {
+    const memory = Array.from({ length: 4 }, (_, i) => ({
+      id: `memory-${i}`, scope: "user", text: "M".repeat(8192), provenance: "os-memory",
+    }));
+    const appCatalog = {
+      id: "ordax-application-catalog", scope: "system",
+      text: "Installed app: OrdaX Notes (verified source).".repeat(16),
+      provenance: "verified-os-catalog",
+    };
+    const selectedApp = {
+      id: "ordax-application-detail:notes", scope: "system",
+      text: "Supported intent notes.create-note; executionAuthorized=false.",
+      provenance: "verified-first-party-manifest",
+    };
+    await intelligence.respond({
+      prompt: "Como posso criar uma nota?",
+      context: [...memory, appCatalog, selectedApp],
+    });
+    assert.ok(generated);
+    const lines = generated.prompt.split("\n");
+    assert.ok(generated.prompt.length <= LOCAL_AI_MAX_PROMPT_CHARS);
+    assert.equal(lines.filter(line => line === "User request:").length, 1);
+    assert.ok(generated.prompt.endsWith("User request:\nComo posso criar uma nota?"));
+    assert.match(generated.prompt, /\[user:memory-0\]/);
+    assert.match(generated.prompt, /\[user:memory-3\]/);
+    assert.match(generated.prompt, /\[system:ordax-application-catalog\]/);
+    assert.match(generated.prompt, /\[system:ordax-application-detail:notes\]/);
+    assert.match(generated.prompt, /notes\.create-note; executionAuthorized=false/);
+    assert.match(generated.prompt, /truncated; remaining context omitted by local input budget/);
+    assert.ok(generated.prompt.indexOf("[user:memory-0]") < generated.prompt.indexOf("[system:ordax-application-catalog]"),
+      "the Intelligence producer must not reorder the OS-authorized context");
+  } finally {
+    intelligence.dispose();
+  }
+});
+
+test("Intelligence emits complete short contexts without unnecessary truncation", async () => {
+  let generated = null;
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inferencePort({ onGenerate(request) { generated = request; } }),
+  });
+  try {
+    await intelligence.respond({
+      prompt: "O que está disponível?",
+      context: [
+        { id: "memory-a", scope: "user", text: "Memória selecionada.", provenance: "os" },
+        { id: "app-a", scope: "system", text: "App presente.", provenance: "os" },
+      ],
+    });
+    assert.ok(generated.prompt.includes('- [user:memory-a] "Memória selecionada." (provenance: os)'));
+    assert.ok(generated.prompt.includes('- [system:app-a] "App presente." (provenance: os)'));
+    assert.doesNotMatch(generated.prompt, /truncated; remaining context omitted by local input budget/);
+    assert.doesNotMatch(generated.prompt, /authorized context omitted by local input budget/);
+  } finally {
+    intelligence.dispose();
+  }
+});
 test("Intelligence maps intent to provider-neutral model purpose", async () => {
   const purposes = [];
   const router = Object.freeze({
