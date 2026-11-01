@@ -285,3 +285,9 @@ Inspeção de leitura em Windows autorizado encontrou um dispositivo online sem 
 Na composição canônica OS, `application-context.mjs` pode omitir o catálogo de apps **antes** de chamar o Intelligence quando `INTELLIGENCE_MAX_CONTEXT_TOTAL_CHARS` já estiver consumido. Balancear o prompt no produtor não recupera essa perda de evidências. O teste F0 reproduz a saturação no checkout fixado do OS e registra a condição como dependência upstream.
 
 O produtor passou a instruir o modelo a não afirmar instalação/ausência/capacidade ou ações concluídas sem contexto autorizado atual. Isso não garante a resposta do GGUF; são necessárias avaliação física e correção do orçamento pela equipe do **`ordax-os`**. Ver [evidência F0](evidence/INTELLIGENCE-001-F0-BASELINE.md). Sem alteração de source lock, aplicação Windows, RAG, grants ou repositórios de outros engenheiros.
+
+## INTELLIGENCE-001 F0 — reaproveitamento de quotas contextuais inviáveis (2026-11-01)
+
+Corrigido o `fairContextBudgets` do Intelligence com validação do **custo mínimo de serialização**: itens com ID/proveniência enormes que não cabem na sua parcela deixam de bloquear orçamento. O valor livre é redistribuído aos contextos remanescentes sem reordenar, elevar `scope=system`, exceder `LOCAL_AI_MAX_PROMPT_CHARS` ou alterar `ordax.intelligence/1`.
+
+Testes com prompt do usuário no limite de 32000 caracteres, contextos de documentos com metadados máximos e catálogo de apps garantem que evidências cabíveis não desapareçam apenas por reservas inúteis. Veja [evidência F0](evidence/INTELLIGENCE-001-F0-BASELINE.md). Isso não faz ranking, indexação, autorização de apps ou execução: o source lock e ativação Windows continuam pertencendo ao OS; a F0 de modelo real permanece parcial.
