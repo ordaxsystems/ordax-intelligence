@@ -99,3 +99,115 @@ test("only the newest concurrent probe may publish health state", async () => {
   await olderProbe;
   assert.equal(runtime.getSnapshot().state, "error");
 });
+
+test("a dynamic discovery cannot change the model used by concurrent inference before health", async () => {
+  const secondHealthStarted = deferred();
+  const secondHealth = deferred();
+  const requestedModels = [];
+  let discovery = 0;
+  let healthCalls = 0;
+  const runtime = createLocalAiRuntime({
+    modelId: null,
+    fetchImpl: async (url, options = {}) => {
+      if (url.endsWith("/v1/models")) {
+        discovery += 1;
+        const id = discovery === 1 ? "model-a" : "model-b";
+        return { ok: true, async json() { return { data: [{ id }] }; } };
+      }
+      if (url.endsWith("/health")) {
+        healthCalls += 1;
+        if (healthCalls === 2) {
+          secondHealthStarted.resolve();
+          return secondHealth.promise;
+        }
+        return { ok: true };
+      }
+      if (url.endsWith("/v1/chat/completions")) {
+        const body = JSON.parse(options.body);
+        requestedModels.push(body.model);
+        return {
+          ok: true,
+          async json() {
+            return {
+              model: body.model,
+              choices: [{
+                message: { role: "assistant", content: "local response" },
+                finish_reason: "stop",
+              }],
+            };
+          },
+        };
+      }
+      throw new Error("unexpected request");
+    },
+  });
+
+  try {
+    await runtime.probe();
+    assert.equal(runtime.getSnapshot().modelId, "model-a");
+
+    const pendingProbe = runtime.probe();
+    await secondHealthStarted.promise;
+    assert.equal(runtime.getSnapshot().state, "ready");
+    assert.equal(runtime.getSnapshot().modelId, "model-a");
+
+    // The previous implementation changed activeModelId to model-b as soon
+    // as discovery completed, even though snapshot still advertised model-a.
+    const completion = await runtime.generate({ prompt: "Use the approved model" });
+    assert.equal(completion.modelId, "model-a");
+    assert.equal(completion.text, "local response");
+    assert.deepEqual(requestedModels, ["model-a"]);
+    assert.equal(runtime.getSnapshot().modelId, "model-a");
+
+    secondHealth.resolve({ ok: true });
+    await pendingProbe;
+    // Starting inference invalidated the pending health probe: never
+    // promote the stale model-b identity over the completed model-a request.
+    assert.equal(runtime.getSnapshot().modelId, "model-a");
+    assert.equal(runtime.getSnapshot().state, "ready");
+  } finally {
+    secondHealth.resolve({ ok: true });
+    runtime.dispose();
+  }
+});
+
+test("a new dynamic model becomes authoritative only after its current health response", async () => {
+  const secondHealthStarted = deferred();
+  const secondHealth = deferred();
+  let discovery = 0;
+  let healthCalls = 0;
+  const runtime = createLocalAiRuntime({
+    modelId: null,
+    fetchImpl: async (url) => {
+      if (url.endsWith("/v1/models")) {
+        discovery += 1;
+        const id = discovery === 1 ? "model-a" : "model-b";
+        return { ok: true, async json() { return { data: [{ id }] }; } };
+      }
+      if (url.endsWith("/health")) {
+        healthCalls += 1;
+        if (healthCalls === 2) {
+          secondHealthStarted.resolve();
+          return secondHealth.promise;
+        }
+        return { ok: true };
+      }
+      throw new Error("unexpected request");
+    },
+  });
+
+  try {
+    await runtime.probe();
+    const pendingProbe = runtime.probe();
+    await secondHealthStarted.promise;
+    assert.equal(runtime.getSnapshot().state, "ready");
+    assert.equal(runtime.getSnapshot().modelId, "model-a");
+    secondHealth.resolve({ ok: true });
+    await pendingProbe;
+    assert.equal(runtime.getSnapshot().state, "ready");
+    assert.equal(runtime.getSnapshot().modelId, "model-b");
+  } finally {
+    secondHealth.resolve({ ok: true });
+    runtime.dispose();
+  }
+});
