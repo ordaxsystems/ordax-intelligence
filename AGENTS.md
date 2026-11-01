@@ -62,3 +62,7 @@ Não posicionar o último preflight **antes** de montar a entrada de inferência
 ### Cancelamento no preflight final do modelo
 
 Não remover o gate de `assertAlive()` + `signal.aborted` **após** construir `inferenceInput` e ler o snapshot final, imediatamente antes de `inference.generate()`. Dependências síncronas do OS, especialmente `getLocale()`, podem cancelar ou descartar o runtime sem trocar engine/modelo. A porta Local AI deve receber **zero** prompts nesse caso, mesmo que seu adaptador ignore um AbortSignal já abortado. Regressões obrigatórias em `tests/upstream/test_intelligence_runtime.mjs`; não criar cancelador ou autoridade paralela.
+
+### Seleção de rota também faz parte da invariância de identidade
+
+O monitor de identidade da Local AI deve ser instalado **antes** de `router.route()` e persistir durante o streaming, não apenas após obter a rota. Rejeite mudanças A → B → A de engine/modelId e `busy → ready` durante a seleção, mesmo se o snapshot e a rota finais voltarem a ser iguais. Após seleção, aceite busy/ready da mesma identidade para a geração. Remova o observador em `finally` e não encaminhe contexto antes dos gates. Os testes de regressão estão em `tests/upstream/test_intelligence_runtime.mjs`; a evidência e limitações constam em `docs/evidence/INTELLIGENCE-001-F0-BASELINE.md`.
