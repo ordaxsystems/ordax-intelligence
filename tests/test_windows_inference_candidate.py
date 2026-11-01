@@ -55,7 +55,7 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
             self.assertTrue(cache.is_dir())
             self.assertFalse(output.exists(), "candidate output is created after proof only")
             with candidate.fixed_windows_workspace(cache) as workspace:
-                self.assertEqual(workspace, root / "ordax-windows-inference-native-build")
+                self.assertEqual(workspace, root.resolve() / "ordax-windows-inference-native-build")
                 self.assertTrue(workspace.is_dir())
             self.assertFalse(workspace.exists(), "workspace is always removed")
 
