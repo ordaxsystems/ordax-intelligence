@@ -7,10 +7,10 @@ const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 requireRegularPath("package.json", "file");
 const packageBytes = readFileSync("package.json");
 const pkg = JSON.parse(packageBytes.toString("utf8"));
-// The version is part of the artifact filename. Reject path characters and
-// malformed metadata rather than allowing unchecked filesystem destinations.
-if (typeof pkg.version !== "string" || pkg.version.length > 80
-  || !/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(pkg.version)) {
+// The version is part of the artifact filename. Permit the established
+// release/test versions, but never path separators, control bytes or escapes.
+if (typeof pkg.version !== "string"
+  || !/^[A-Za-z0-9][A-Za-z0-9._+-]{0,79}$/.test(pkg.version)) {
   throw new Error("Invalid source handoff package version");
 }
 const files = collectPortableSourceFiles();
