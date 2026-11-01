@@ -54,6 +54,35 @@ test("matching architecture cannot assert qualified performance without evidence
   }
 });
 
+test("compatibility storage lower bound must remain an exact safe integer", () => {
+  const pinned = BUNDLED_LOCAL_AI_MODEL_CANDIDATE;
+  // Each source field can be individually safe while their sum is not.
+  const overflow = {
+    ...pinned,
+    modelBytes: Number.MAX_SAFE_INTEGER - 1,
+    engineBytes: 2,
+  };
+  assert.equal(Number.isSafeInteger(overflow.modelBytes), true);
+  assert.equal(Number.isSafeInteger(overflow.engineBytes), true);
+  assert.throws(
+    () => assessBundledLocalAiModel({ candidate: overflow, hardware: hardware("x86_64") }),
+    /not a reviewed read-only release preview/,
+  );
+
+  // Exactly at the representable boundary the original byte-count
+  // semantics remain unchanged (without inventing installation approval).
+  const boundary = {
+    ...pinned,
+    modelBytes: Number.MAX_SAFE_INTEGER - 1,
+    engineBytes: 1,
+  };
+  const result = assessBundledLocalAiModel({ candidate: boundary, hardware: hardware("AMD64") });
+  assert.equal(result.modelAndEngineBytesLowerBound, Number.MAX_SAFE_INTEGER);
+  assert.equal(result.benchmarkQualified, false);
+  assert.equal(result.installedOrUpdateVerified, false);
+  assert.equal(result.independentInstallAvailable, false);
+});
+
 test("absent device read is unknown even when host RAM and storage are available", () => {
   const result = assessBundledLocalAiModel({ metrics: metrics() });
   assert.equal(result.status, "device-not-assessed");
