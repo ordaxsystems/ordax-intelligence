@@ -121,3 +121,7 @@ efetivamente montar o host Electron Native `ordax.local-ai/1` com supervisor,
 segredo não exportado ao renderer, health, cancelamento, atualização e rollback.
 Até esse cutover e o E2E físico do .exe, a Aura Windows deve continuar
 `unavailable` sem fallback online implícito. Não alterar USB Dev #2243.
+
+## Gate de proveniência source-only (2026-11-01)
+
+A verificação do arquivo de handoff passa a conferir a igualdade byte a byte de **ambos** os artefatos: tar e recibo JSON canônico. O verificador anterior comparava integralmente o tar, mas só `sha256` e `size` do recibo; alterações de `activationAuthorized` ou demais flags podiam escapar ao gate. Os testes negativos agora cobrem flags de ativação/modelo/motor, campos de procedência e extras, arquivo adulterado, alteração do source e symlinks em `src/`. O contrato OS, a ABI, o commit fixado do consumidor e o estado `integration-candidate` não mudam; nenhuma inferência real, release assinada ou cutover é declarada com essa prova.
