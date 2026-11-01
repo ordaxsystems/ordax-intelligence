@@ -48,8 +48,10 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
             output, cache = candidate.validate_proof_paths(
                 requested_output, requested_cache
             )
-            self.assertEqual(output, requested_output)
-            self.assertEqual(cache, requested_cache)
+            # Windows CI may supply a DOS 8.3 alias for the tempfile
+            # parent (RUNNER~1), while the canonical validator expands it.
+            self.assertEqual(output, requested_output.parent.resolve() / requested_output.name)
+            self.assertEqual(cache, requested_cache.resolve())
             self.assertTrue(cache.is_dir())
             self.assertFalse(output.exists(), "candidate output is created after proof only")
             with candidate.fixed_windows_workspace(cache) as workspace:
