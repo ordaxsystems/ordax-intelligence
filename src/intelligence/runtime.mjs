@@ -354,6 +354,12 @@ function createIntelligenceRuntime({ inferencePort, modelRouterPort = null, getL
           maxTokens: request.maxTokens,
         };
         const dispatchSnapshot = inference.getSnapshot();
+        // Locale resolution and other synchronous pre-dispatch work can
+        // cancel this request or dispose the Intelligence owner. A model
+        // adapter may ignore the passed AbortSignal, so reject here before
+        // exposing any authorized context to inference.generate().
+        assertAlive();
+        if (signal?.aborted) throw new Error('Intelligence request cancelled');
         if (identityChanged || dispatchSnapshot.state !== 'ready'
             || dispatchSnapshot.engineId !== route.engineId
             || dispatchSnapshot.modelId !== route.modelId) {

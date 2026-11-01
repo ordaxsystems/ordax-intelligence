@@ -522,6 +522,62 @@ test("portable Intelligence refuses to dispatch if locale lookup makes the OS ba
     assert.equal(intelligence.getSnapshot().state, "busy");
   } finally { intelligence.dispose(); }
 });
+test("Intelligence rejects cancellation initiated by OS locale resolution before private dispatch", async () => {
+  let calls = 0;
+  const controller = new AbortController();
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inferencePort({ onGenerate() { calls += 1; } }),
+    getLocale() { controller.abort(); return "pt-BR"; },
+  });
+  try {
+    await assert.rejects(() => intelligence.respond({
+      prompt: "Private authorized material must not be sent after cancellation",
+      context: [{ id: "secret", scope: "document", text: "CANARY_PRIVATE_ABORT", provenance: "os-authorized" }],
+    }, { signal: controller.signal }), /request cancelled/);
+    assert.equal(calls, 0, "even a non-cooperative backend must receive zero requests");
+  } finally { intelligence.dispose(); }
+});
+
+test("Intelligence refuses dispatch when OS locale resolution disposes the owner", async () => {
+  let calls = 0;
+  let intelligence;
+  intelligence = createIntelligenceRuntime({
+    inferencePort: inferencePort({ onGenerate() { calls += 1; } }),
+    getLocale() { intelligence.dispose(); return "pt-BR"; },
+  });
+  await assert.rejects(() => intelligence.respond({
+    prompt: "Private material after dispose must never be forwarded",
+    context: [{ id: "secret", scope: "document", text: "CANARY_PRIVATE_DISPOSE", provenance: "os-authorized" }],
+  }), /disposed/);
+  assert.equal(calls, 0);
+  assert.equal(intelligence.getSnapshot().authority, "none");
+});
+
+test("Intelligence rechecks cancellation even when last live snapshot lookup aborts the caller", async () => {
+  const controller = new AbortController();
+  let calls = 0;
+  let armed = false;
+  const base = inferencePort({ onGenerate() { calls += 1; } });
+  const inference = Object.freeze({
+    ...base,
+    getSnapshot() {
+      const value = base.getSnapshot();
+      if (armed) { armed = false; controller.abort(); }
+      return value;
+    },
+  });
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inference,
+    getLocale() { armed = true; return "pt-BR"; },
+  });
+  try {
+    await assert.rejects(() => intelligence.respond({
+      prompt: "The final snapshot must not authorize a cancelled request",
+      context: [{ id: "private", scope: "document", text: "CANARY_FINAL_SNAPSHOT", provenance: "os-authorized" }],
+    }, { signal: controller.signal }), /request cancelled/);
+    assert.equal(calls, 0, "the post-snapshot abort is checked before generate()");
+  } finally { intelligence.dispose(); }
+});
 test("portable Intelligence refuses unsupported OS locale before sharing context with inference", async () => {
   let generated = 0;
   let locale = "unknown-locale";

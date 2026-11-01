@@ -158,3 +158,13 @@ Regressões em `tests/upstream/test_intelligence_runtime.mjs`: (1) oito document
 **Provas de compatibilidade com o checkout OS fixado:** `tests/upstream/test_intelligence_runtime.mjs` verifica três regressões: (1) `getLocale()` altera `modelId` e o backend recebe zero requisições; (2) `getLocale()` publica modelo B e retorna A, o latch impede envio e uma requisição nova limpa não herda a falha; (3) `getLocale()` publica `busy` na mesma identidade, impedindo dispatch. Continuam válidos os testes de idioma normal, troca durante streaming, cancelamento e limites do prompt.
 
 **Limitação:** validação de port simulado não demonstra que o OrdaX Desktop Windows recebeu esse produtor ou que há GGUF funcionando. As permissões e a veracidade da identidade do backend pertencem ao OS, que segue com source lock sem ativação e prova física pendente.
+
+## 13. F0 — cancelamento e descarte antes do envio físico (2026-11-01)
+
+A checagem introduzida após a preferência regional na etapa anterior verificava estado/identidade do backend, mas não revalidava **cancelamento do pedido** nem **descarte do núcleo Intelligence** após `systemPromptForLocale(getLocale)`. Um getter regional ou um último acesso ao snapshot poderia cancelar a solicitação de forma síncrona; um adaptador de inferência que ignorasse o `AbortSignal` ainda receberia o prompt e o contexto autorizado antes de o erro ser detectado.
+
+O produtor agora chama `assertAlive()` e verifica `signal.aborted` **depois de toda a montagem de input e da leitura final do snapshot**, imediatamente antes de `inference.generate()`. Esse gate reutiliza o signal fornecido pelo usuário e o ciclo de vida existente, sem criar novo cancelador, state store ou proprietário de identidade.
+
+Regressões no `tests/upstream/test_intelligence_runtime.mjs` exigem **zero** invocações do backend quando `getLocale()` cancela o pedido, quando `getLocale()` descarta o núcleo, e quando a última chamada a `getSnapshot()` cancela o pedido. Os testes usam o validador regional canônico do OS e um adaptador que não aplica cancelamento por conta própria; assim exercitam a defesa do Intelligence, não uma garantia simulada do transporte.
+
+Limitação: são testes de contrato e concorrência síncrona, não inferência GGUF física. O owner OS continua responsável pelo runtime real, source lock, motor, instalação Windows e autorização. O cancelamento posterior ao envio permanece coberto pela porta Local AI e pelos gates de streaming/resultado, mas não desfaz dados já enviados a um backend.

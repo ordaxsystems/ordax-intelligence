@@ -303,3 +303,7 @@ Testes em `tests/upstream/test_intelligence_runtime.mjs` rejeitam deltas após t
 Fechada janela na preparação do prompt: `systemPromptForLocale(getLocale)` pode publicar mudança no motor/modelo após a checagem pré-inferência. O Intelligence agora revalida o snapshot Local AI **depois de montar todo input e imediatamente antes de chamar `generate()`**, exigindo backend `ready`, identidade preservada e latch de eventos A → B → A intacto. Na falha, nenhum contexto é enviado.
 
 Regressões com validador OS real no adaptador verificam mudança de modelo, volta ao modelo inicial e transição para `busy` durante `getLocale()`. Não alterar a escolha regional, as autorizações, o gerenciador de modelos nem o source pin do OS. E2E Windows com engine/modelo aprovado permanece pendente. Evidência: [INTELLIGENCE-001 F0](evidence/INTELLIGENCE-001-F0-BASELINE.md).
+
+## INTELLIGENCE-001 F0 — cancelar ou descartar durante montagem do prompt (2026-11-01)
+
+Após resolver idioma e construir o prompt, a última checagem de rota já impedia troca de modelo antes do envio; faltava revalidar cancelamento e ciclo de vida nesse mesmo ponto. O produtor agora bloqueia `generate()` com `assertAlive()` e `signal.aborted` após a última leitura de snapshot. Três regressões provam ausência de qualquer chamada ao modelo quando a preferência regional cancela, descarta o runtime ou quando a leitura final do snapshot cancela a requisição. Não altera OS, Local AI, grants, sessão, engine, contratos nem source lock; F0 física em Windows permanece pendente.
