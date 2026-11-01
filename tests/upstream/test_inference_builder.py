@@ -2,6 +2,7 @@
 import importlib.util
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -93,14 +94,13 @@ class LocalAiRuntimeBuilderTests(unittest.TestCase):
                     root, "../outside/Apache-2.0.txt", "OS model license"
                 )
 
-    def test_direct_download_helpers_refuse_symlinked_cache_parents_before_network(self):
+    def test_exact_download_refuses_symlinked_cache_parent_before_network(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             outside = root / "outside"
             outside.mkdir()
             alias = root / "cache"
             alias.symlink_to(outside, target_is_directory=True)
-            url = "https://invalid.example/never-fetch"
             with mock.patch.object(
                 BUILDER.urllib.request, "urlopen",
                 side_effect=AssertionError("unexpected network access"),
@@ -109,43 +109,93 @@ class LocalAiRuntimeBuilderTests(unittest.TestCase):
                     BUILDER.RuntimeBuildError, "model cache.*symlink"
                 ):
                     BUILDER.download_exact(
-                        url, alias / "model.gguf", "0" * 64, 12
+                        "https://invalid.example/never-fetch",
+                        alias / "model.gguf", "0" * 64, 12,
                     )
-                with self.assertRaisesRegex(
-                    BUILDER.RuntimeBuildError, "bounded download destination.*symlink"
-                ):
-                    BUILDER.download_bounded(url, alias / "license.txt")
             self.assertEqual(list(outside.iterdir()), [])
 
-    def test_bounded_download_rejects_symlink_target_before_network_and_reads_real_file(self):
-        import io
+    def test_os_checkout_attests_committed_manifest_contract_and_license(self):
+        canonical_lock = BUILDER.load_source_lock()
+        files = {
+            "system/services/local-ai/source-lock.json": SOURCE_LOCK.read_bytes(),
+            "docs/contracts/local-ai.json":
+                (OS_ROOT / "docs/contracts/local-ai.json").read_bytes(),
+            canonical_lock["model"]["license_text_path"]:
+                (OS_ROOT / canonical_lock["model"]["license_text_path"]).read_bytes(),
+        }
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            outside = root / "outside"
-            outside.write_bytes(b"outside unchanged")
-            destination = root / "license.txt"
-            destination.symlink_to(outside)
-            with mock.patch.object(
-                BUILDER.urllib.request, "urlopen",
-                side_effect=AssertionError("unexpected network"),
+            os_root = Path(temporary) / "canonical-os"
+            os_root.mkdir()
+            for relative, payload in files.items():
+                target = os_root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(payload)
+            subprocess.run(["git", "init", "-q", str(os_root)], check=True)
+            subprocess.run(["git", "-C", str(os_root), "add", "."], check=True)
+            subprocess.run([
+                "git", "-C", str(os_root),
+                "-c", "user.name=OrdaX CI",
+                "-c", "user.email=ci@ordax.invalid",
+                "commit", "-q", "-m", "pin OS-owned build inputs",
+            ], check=True)
+            paths = [
+                "system/services/local-ai/source-lock.json",
+                "docs/contracts/local-ai.json",
+                canonical_lock["model"]["license_text_path"],
+            ]
+            with (
+                mock.patch.object(BUILDER, "ROOT", os_root),
+                mock.patch.object(BUILDER, "SOURCE_LOCK", os_root / paths[0]),
+                mock.patch.object(BUILDER, "CONTRACT", os_root / paths[1]),
+                mock.patch.dict(BUILDER.os.environ, {"ORDAX_SOURCE_COMMIT": ""}),
             ):
+                lock = BUILDER.load_source_lock()
+                commit = subprocess.check_output(
+                    ["git", "-C", str(os_root), "rev-parse", "HEAD"], text=True,
+                ).strip()
+                self.assertEqual(BUILDER.attest_os_committed_inputs(lock), commit)
+                self.assertEqual(BUILDER.source_commit(), commit)
+                # No source-lock revalidation can bless a dirty JSON document,
+                # a mutated contract, or a modified legal notice under old HEAD.
+                for path in paths:
+                    with self.subTest(uncommitted=path):
+                        target = os_root / path
+                        original = target.read_bytes()
+                        target.write_bytes(original + b"\n")
+                        try:
+                            with self.assertRaisesRegex(
+                                BUILDER.RuntimeBuildError,
+                                "differs from committed HEAD",
+                            ):
+                                BUILDER.attest_os_committed_inputs(lock)
+                        finally:
+                            target.write_bytes(original)
+                self.assertEqual(BUILDER.attest_os_committed_inputs(lock), commit)
+
+    def test_nested_directory_cannot_impersonate_os_git_checkout_root(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "parent-repository"
+            root.mkdir()
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            nested = root / "os-subdirectory"
+            nested.mkdir()
+            with (
+                mock.patch.object(BUILDER, "ROOT", nested),
+                mock.patch.dict(BUILDER.os.environ, {"ORDAX_SOURCE_COMMIT": ""}),
+            ):
+                # HEAD exists in the parent Git repo, not this OS checkout.
+                subprocess.run([
+                    "git", "-C", str(root), "-c", "user.name=OrdaX CI",
+                    "-c", "user.email=ci@ordax.invalid",
+                    "commit", "--allow-empty", "-q", "-m", "empty parent",
+                ], check=True)
                 with self.assertRaisesRegex(
-                    BUILDER.RuntimeBuildError, "must be a regular file"
+                    BUILDER.RuntimeBuildError, "root of its own Git checkout"
                 ):
-                    BUILDER.download_bounded(
-                        "https://invalid.example/license", destination
+                    BUILDER.attest_os_committed_inputs(
+                        {"model": {"license_text_path":
+                            "third_party/licenses/Apache-2.0.txt"}}
                     )
-            self.assertEqual(outside.read_bytes(), b"outside unchanged")
-            destination.unlink()
-            with mock.patch.object(
-                BUILDER.urllib.request, "urlopen",
-                return_value=io.BytesIO(b"verified license\n"),
-            ):
-                result = BUILDER.download_bounded(
-                    "https://invalid.example/license", destination
-                )
-            self.assertEqual(result, destination)
-            self.assertEqual(destination.read_bytes(), b"verified license\n")
 
     def test_source_lock_is_exact_and_runtime_is_loopback_only(self):
         lock = BUILDER.load_source_lock()
