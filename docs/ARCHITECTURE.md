@@ -63,3 +63,11 @@ O contrato do OS permite texto, ID e proveniência com quebras de linha e caract
 A contabilidade do limite `LOCAL_AI_MAX_PROMPT_CHARS` é feita **depois do escape**, e trechos truncados são cortados em pontos de código Unicode, mantidos como strings JSON válidas com indicação explícita de truncamento. Dados insuficientes são omitidos com marcador em vez de ultrapassar o orçamento. O produtor não decide quais documentos ou apps são autorizados: seleção e escopo continuam exclusivamente no OS.
 
 **Importante:** isso mitiga falsificação de **delimitadores estruturais**, não elimina prompt injection semântico dentro de conteúdo autorizado, nem concede autoridade ao modelo. A versão Native já instalada no OS continua independente até o source pin/cutover do owner OS; não afirmar que o produto Windows recebeu este código antes de sua adoção real.
+
+## Distribuição equilibrada do orçamento de contexto (INTELLIGENCE-001 F0)
+
+A composição Native do OS acrescenta memória autorizada e depois conhecimento verificado de aplicativos. O OS determina **quais** itens podem ser vistos e sua ordem; o Intelligence não cria catálogo, ranking semântico, concessões ou seleção por confiança. Porém o produtor anteriormente consumia o limite de prompt sequencialmente, cortando o primeiro item longo e descartando todos os posteriores, inclusive projeções de apps presentes.
+
+O produtor agora mede o custo de cada item **após a serialização segura** e, quando a soma excede o orçamento, aplica um limite equilibrado (*water-filling*) de comprimento por item. Contextos curtos permanecem integrais e liberam espaço; os longos podem ser truncados com indicação explícita. A **ordem original é preservada**. Se nem os metadados escapados couberem, o item pode ser omitido; um indicador de omissão é acrescentado quando houver espaço. Nunca se promete que todo item entrará sob um prompt de usuário quase no limite.
+
+Essa política é agnóstica quanto a scopes/IDs: o rótulo `system` **não** cria prioridade nem autoridade no modelo. Filtros por owner, Space, versão, manifesto, e origem continuam exclusivamente no OS. Os testes ligados ao checkout do OS fixado verificam que documentos extensos não apagam o catálogo/intents autorizados, e que nenhum segredo de outro Space chega à inferência. Não é RAG semântico, recall perfeito nem melhoria de qualidade física já comprovada.
