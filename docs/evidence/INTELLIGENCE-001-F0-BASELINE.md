@@ -90,3 +90,11 @@ node tools/evaluation/score-contextual-f0.mjs --score /caminho/local/respostas-f
 O processo retorna `0` quando todos os canários passaram, `1` com falhas individuais e `2` se o arquivo de entrada viola o esquema. Nenhum dado de respostas é impresso ou salvo no relatório. O operador deve guardar a evidência física privada/sensível fora do repositório e somente registrar conclusões verificáveis sem credenciais; **não promover cutover por porcentagem de canários**.
 
 **Próximo gate F0:** o owner do OS fornece coleta vinculada ao modelo/ABI/slot real em Windows físico, e a equipe compara resultados/latência com estes casos antes de declarar qualquer capacidade de produto. O canário offline é apenas um instrumento de regressão para esse futuro teste.
+
+## 6. F0 — correção de falsos positivos lexicais (2026-11-01)
+
+Uma regressão do avaliador foi identificada: `requireAny` procurava substrings em qualquer posição. Assim, o indicador `autoriza` era encontrado dentro de **`desautorizado`**, permitindo que uma resposta negando autorização parecesse cumprir o canário de segurança. O indicador agora só conta se começar no início de uma palavra Unicode (letras e números não podem precedê-lo). A terminação continua flexível para aceitar `autorização` e `encontrei` como variantes de radicais intencionais. Marcadores de vazamento e afirmações proibidas continuam usando busca integral para não permitir que um prefixo extra esconda um segredo de Space.
+
+As rubricas existentes foram estendidas com afirmações contraditórias explícitas: nota já salva sem autorização, comando já executado e `Photo Editor` não instalado. Testes negativos demonstram que esses textos **antes podiam pontuar indevidamente** e agora são rejeitados, sem mudar os IDs dos seis cenários ou a política de privacidade.
+
+**Limite obrigatório:** correspondência lexical não é compreensão semântica. Parafraseamento adversarial, ironia, texto citado e negações complexas ainda exigem avaliação humana ou teste real de modelo; `semanticQualityQualified=false` e `physicalModelAttested=false` permanecem sempre. Esta correção melhora a resistência do canário, **não** comprova a competência da Aura ou do GGUF.
