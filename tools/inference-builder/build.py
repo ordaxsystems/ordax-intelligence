@@ -32,14 +32,13 @@ CONTRACT = None
 
 def configure_os_source(root):
     global ROOT, SOURCE_LOCK, CONTRACT
-    path = Path(root)
-    if path.is_symlink() or not path.is_dir():
-        raise RuntimeBuildError("OS source root must be a real directory")
-    path = path.resolve(strict=True)
-    candidate_lock = path / "system/services/local-ai/source-lock.json"
-    contract = path / "docs/contracts/local-ai.json"
-    if any(p.is_symlink() or not p.is_file() for p in (candidate_lock, contract)):
-        raise RuntimeBuildError("OS-owned inference manifests must be regular files")
+    path = require_real_directory(root, "OS source")
+    candidate_lock = require_os_source_file(
+        path, "system/services/local-ai/source-lock.json", "OS-owned inference manifests"
+    )
+    contract = require_os_source_file(
+        path, "docs/contracts/local-ai.json", "OS-owned inference manifests"
+    )
     ROOT, SOURCE_LOCK, CONTRACT = path, candidate_lock, contract
 
 UUID_NAMESPACE = uuid.UUID("5e80a621-8a05-5d58-8b70-4403ec424b51")
@@ -89,6 +88,21 @@ def require_real_directory(path, label, *, create=False):
     if not path.is_dir():
         raise RuntimeBuildError(f"{label} must be a real directory")
     return path.resolve(strict=True)
+
+
+def require_os_source_file(root, relative_path, label):
+    """Keep OS authority files within a real tree, rejecting symlinked ancestors."""
+    relative = Path(relative_path)
+    if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+        raise RuntimeBuildError(f"{label} path is unsafe")
+    path = Path(root)
+    for part in relative.parts:
+        path = path / part
+        if path.is_symlink():
+            raise RuntimeBuildError(f"{label} must not traverse a symlink: {path}")
+    if not path.is_file():
+        raise RuntimeBuildError(f"{label} must be regular files")
+    return path
 
 
 def sha256_file(path):
@@ -224,12 +238,18 @@ def load_source_lock(path=None):
 
 
 def source_commit():
-    value = os.environ.get("ORDAX_SOURCE_COMMIT", "").strip().lower()
-    if not value:
-        value = run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture=True).stdout.strip().lower()
-    if not COMMIT_RE.fullmatch(value):
+    if ROOT is None:
+        raise RuntimeBuildError("canonical OS source must be supplied explicitly")
+    actual = run(
+        ["git", "-C", str(ROOT), "rev-parse", "--verify", "HEAD"],
+        capture=True,
+    ).stdout.strip().lower()
+    if not COMMIT_RE.fullmatch(actual):
         raise RuntimeBuildError("OrdaX source commit must be lowercase 40-hex")
-    return value
+    declared = os.environ.get("ORDAX_SOURCE_COMMIT", "").strip().lower()
+    if declared and (not COMMIT_RE.fullmatch(declared) or declared != actual):
+        raise RuntimeBuildError("OrdaX source commit environment differs from checked-out HEAD")
+    return actual
 
 
 def model_url(lock):
@@ -243,7 +263,7 @@ def model_url(lock):
 
 def download_exact(url, destination, expected_sha256, expected_size):
     destination = Path(destination)
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    require_real_directory(destination.parent, "model cache", create=True)
     if destination.is_symlink():
         raise RuntimeBuildError("cached model path must not be a symlink")
     if (
@@ -290,7 +310,9 @@ def download_exact(url, destination, expected_sha256, expected_size):
 
 def download_bounded(url, destination, max_bytes=MAX_LICENSE_BYTES):
     destination = Path(destination)
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    require_real_directory(destination.parent, "bounded download destination", create=True)
+    if destination.is_symlink() or (destination.exists() and not destination.is_file()):
+        raise RuntimeBuildError("bounded download destination must be a regular file")
     request = urllib.request.Request(url, headers={"User-Agent": "OrdaX-local-ai-builder/1"})
     data = bytearray()
     try:
@@ -579,8 +601,10 @@ def build(out_dir, cache_dir):
         model["sha256"],
         model["size_bytes"],
     )
-    model_license = ROOT / model["license_text_path"]
-    if model_license.is_symlink() or not model_license.is_file() or not 0 < model_license.stat().st_size <= MAX_LICENSE_BYTES:
+    model_license = require_os_source_file(
+        ROOT, model["license_text_path"], "vendored model license"
+    )
+    if not 0 < model_license.stat().st_size <= MAX_LICENSE_BYTES:
         raise RuntimeBuildError("vendored model license is missing or unsafe")
     mirror = prepare_engine_mirror(lock, cache_dir)
 
