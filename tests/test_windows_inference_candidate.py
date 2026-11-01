@@ -163,6 +163,19 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
         self.assertIn("($firstHashes -join ';') -cne ($secondHashes -join ';')", workflow)
         self.assertIn("throw 'Pinned Windows EXE/DLL outputs are not byte-reproducible'", workflow)
         self.assertNotIn("$firstHashes.Count -ne 8", workflow)
+        # PRs enforce the source/path contract without consuming two Windows
+        # compile slots. Actual GGUF and EXE/DLL proofs remain manual-only.
+        for step in (
+            "Compile exact llama.cpp and prove real offline GGUF inference",
+            "Rebuild independent Windows PE files and reject nonreproducible digests",
+        ):
+            with self.subTest(step=step):
+                header = workflow.split("- name: " + step, 1)[1].split("shell: pwsh", 1)[0]
+                self.assertIn("if: github.event_name == 'workflow_dispatch'", header)
+        upload = workflow.split(
+            "- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f", 1
+        )[1].split("with:", 1)[0]
+        self.assertIn("if: github.event_name == 'workflow_dispatch'", upload)
 
     def test_real_proof_must_use_same_os_owned_model_lock_and_no_authority(self):
         source = (BUILDER_DIR / "windows-candidate.py").read_text(encoding="utf-8")
