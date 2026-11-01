@@ -71,6 +71,19 @@ def run(argv, *, cwd=None, env=None, capture=False):
         raise RuntimeBuildError("command failed: " + " ".join(map(str, argv))) from exc
 
 
+def require_real_directory(path, label, *, create=False):
+    """Reject symlinked roots or parents before writing/reading build artifacts."""
+    path = Path(path).expanduser().absolute()
+    for component in (path, *path.parents):
+        if component.is_symlink():
+            raise RuntimeBuildError(f"{label} must not traverse a symlink: {component}")
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    if not path.is_dir():
+        raise RuntimeBuildError(f"{label} must be a real directory")
+    return path.resolve(strict=True)
+
+
 def sha256_file(path):
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
@@ -211,6 +224,8 @@ def model_url(lock):
 def download_exact(url, destination, expected_sha256, expected_size):
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.is_symlink():
+        raise RuntimeBuildError("cached model path must not be a symlink")
     if (
         destination.is_file()
         and destination.stat().st_size == expected_size
@@ -220,6 +235,8 @@ def download_exact(url, destination, expected_sha256, expected_size):
     if destination.exists() or destination.is_symlink():
         destination.unlink()
     part = destination.with_name(destination.name + ".part")
+    if part.is_symlink():
+        raise RuntimeBuildError("partial model cache path must not be a symlink")
     part.unlink(missing_ok=True)
     digest = hashlib.sha256()
     total = 0
@@ -276,11 +293,17 @@ def download_bounded(url, destination, max_bytes=MAX_LICENSE_BYTES):
 
 
 def prepare_engine_mirror(lock, cache_dir):
-    mirror = Path(cache_dir) / "llama.cpp.git"
+    cache_dir = require_real_directory(cache_dir, "engine cache", create=True)
+    mirror = cache_dir / "llama.cpp.git"
     repository = lock["engine"]["repository"]
     commit = lock["engine"]["commit"]
-    Path(cache_dir).mkdir(parents=True, exist_ok=True)
-    if mirror.exists() and not (mirror / "HEAD").is_file():
+    if mirror.is_symlink() or (
+        mirror.exists() and (
+            not mirror.is_dir()
+            or (mirror / "HEAD").is_symlink()
+            or not (mirror / "HEAD").is_file()
+        )
+    ):
         raise RuntimeBuildError("llama.cpp mirror cache is unsafe")
     if not mirror.exists():
         run(["git", "init", "--bare", str(mirror)])
@@ -517,12 +540,16 @@ def build(out_dir, cache_dir):
         if shutil.which(program) is None:
             raise RuntimeBuildError(f"required build tool missing: {program}")
 
-    out_dir = Path(out_dir).resolve()
-    cache_dir = Path(cache_dir).resolve()
-    if out_dir.exists() and any(out_dir.iterdir()):
+    out_dir = require_real_directory(out_dir, "output directory", create=True)
+    cache_dir = require_real_directory(cache_dir, "cache directory", create=True)
+    if (
+        out_dir == cache_dir
+        or out_dir in cache_dir.parents
+        or cache_dir in out_dir.parents
+    ):
+        raise RuntimeBuildError("output and cache directories must not overlap")
+    if any(out_dir.iterdir()):
         raise RuntimeBuildError("output directory must be empty")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    cache_dir.mkdir(parents=True, exist_ok=True)
 
     model = lock["model"]
     model_path = download_exact(
@@ -674,7 +701,7 @@ def build(out_dir, cache_dir):
 
 def verify(out_dir):
     lock = load_source_lock()
-    out_dir = Path(out_dir).resolve()
+    out_dir = require_real_directory(out_dir, "output directory")
     image = out_dir / "local-ai-runtime.erofs"
     provenance_path = out_dir / "local-ai-runtime-provenance.json"
     tree_path = out_dir / "local-ai-runtime-tree.json"
