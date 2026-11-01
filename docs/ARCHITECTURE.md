@@ -4,6 +4,10 @@ Motor reutilizável consultivo, Model Router e cliente de inferência HTTP/SSE s
 
 O OS preserva **Identity, autorização, Memory canônica, Space/projeto, Action Gateway, Supervisor, Host Native, assinatura/ativação, atualização/rollback**. `ordax-platform` preserva OAuth/consentimento MCP remoto; `ordax-runtime`, execução de ações; `ordax-surface` e `ordax-apps`, interface Aura. Um modelo não pode conceder permissões.
 
+## Observadores e descarte
+
+Os snapshots dos ports Local AI e Intelligence são verificados pelos validadores do OS antes da publicação. Notificações a consumidores são consultivas: uma exceção síncrona em um observador não pode impedir mudanças de estado, interferir na inferência nem bloquear outros observadores. A notificação compartilhada é implementada exclusivamente em `src/snapshot-notification.mjs`; inscrições removidas durante uma publicação não são novamente chamadas. `dispose()` durante `busy` bloqueia o envio de novas requisições HTTP e `dispose()` durante a notificação de `ready` impede a aprovação tardia de uma resposta.
+
 ## Porta pública no consumidor OS
 
 ```js
