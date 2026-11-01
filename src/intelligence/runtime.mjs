@@ -303,46 +303,56 @@ function createIntelligenceRuntime({ inferencePort, modelRouterPort = null, getL
       if (snapshot.state !== "ready") {
         throw new Error("Ordax Intelligence local inference is not ready");
       }
-      const route = validateModelRoute(router.route({
-        provider: "local",
-        purpose: PURPOSE_BY_INTENT[request.intent] ?? "general",
-        egressApproved: false,
-      }));
-      if (route.provider !== "local") {
-        throw new Error("External model execution is not enabled in the Stable/MVP runtime");
+      // Subscribe before invoking the injected router: it may publish an
+      // intermediate A -> B -> A transition and return a route that looks
+      // valid against the final ready snapshot. Never forward private context
+      // if any model/engine identity changed during route selection.
+      const selection = inference.getSnapshot();
+      if (selection.state !== 'ready') {
+        throw new Error('Local inference identity changed before route selection');
       }
-      // Check the selected route against the live inference port before any
-      // prompt or authorized context leaves Intelligence. Comparing only the
-      // result identity is too late for an injected/stale router.
-      const selected = inference.getSnapshot();
-      if (
-        selected.state !== "ready"
-        || selected.engineId !== route.engineId
-        || selected.modelId !== route.modelId
-      ) {
-        throw new Error("Local inference identity changed after route selection");
-      }
-      // The model selected before inference is a per-request invariant.
-      // Observing only the result identity misses live model/engine changes
-      // (including A -> B -> A) while a response is being streamed.
       let identityChanged = false;
+      let routeConfirmed = false;
       const observeIdentity = (next) => {
-        if (!['ready', 'busy'].includes(next.state)
-            || next.engineId !== route.engineId
-            || next.modelId !== route.modelId) {
+        // A temporary busy state during routing means a concurrent caller
+        // touched the backend before this request's model was committed.
+        // After routing, busy/ready are normal generation transitions.
+        if ((!routeConfirmed && next.state !== 'ready')
+            || !['ready', 'busy'].includes(next.state)
+            || next.engineId !== selection.engineId
+            || next.modelId !== selection.modelId) {
           identityChanged = true;
         }
       };
       const assertIdentityCurrent = () => {
         const live = inference.getSnapshot();
         if (identityChanged || !['ready', 'busy'].includes(live.state)
-            || live.engineId !== route.engineId
-            || live.modelId !== route.modelId) {
+            || live.engineId !== selection.engineId
+            || live.modelId !== selection.modelId) {
           throw new Error('Local inference identity changed during generation');
         }
       };
       listeners.add(observeIdentity);
       try {
+        const route = validateModelRoute(router.route({
+          provider: 'local',
+          purpose: PURPOSE_BY_INTENT[request.intent] ?? 'general',
+          egressApproved: false,
+        }));
+        if (route.provider !== 'local') {
+          throw new Error('External model execution is not enabled in the Stable/MVP runtime');
+        }
+        // Compare the selected route against the original trusted identity
+        // AND the current snapshot. An A -> B -> A change stays latched.
+        const selected = inference.getSnapshot();
+        if (identityChanged || selected.state !== 'ready'
+            || selected.engineId !== selection.engineId
+            || selected.modelId !== selection.modelId
+            || route.engineId !== selection.engineId
+            || route.modelId !== selection.modelId) {
+          throw new Error('Local inference identity changed after route selection');
+        }
+        routeConfirmed = true;
         assertIdentityCurrent();
         // The OS locale resolver runs synchronously during input assembly.
         // It may publish a model switch or a busy/stopped transition after

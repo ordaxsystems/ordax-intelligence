@@ -168,3 +168,13 @@ O produtor agora chama `assertAlive()` e verifica `signal.aborted` **depois de t
 Regressões no `tests/upstream/test_intelligence_runtime.mjs` exigem **zero** invocações do backend quando `getLocale()` cancela o pedido, quando `getLocale()` descarta o núcleo, e quando a última chamada a `getSnapshot()` cancela o pedido. Os testes usam o validador regional canônico do OS e um adaptador que não aplica cancelamento por conta própria; assim exercitam a defesa do Intelligence, não uma garantia simulada do transporte.
 
 Limitação: são testes de contrato e concorrência síncrona, não inferência GGUF física. O owner OS continua responsável pelo runtime real, source lock, motor, instalação Windows e autorização. O cancelamento posterior ao envio permanece coberto pela porta Local AI e pelos gates de streaming/resultado, mas não desfaz dados já enviados a um backend.
+
+## 14. F0 — identidade verificada durante seleção da rota (2026-11-01)
+
+**Causa:** a proteção de troca A → B → A (PR #44) só observava o port Local AI **após** a seleção da rota pelo model router. Um roteador que publicasse transição de motor/modelo e restaurasse o snapshot inicial durante `route()` podia passar na comparação final, permitindo encaminhar o contexto autorizado apesar da transição intermediária. Um ciclo `busy → ready` ocorrido na escolha da rota tinha a mesma lacuna de concorrência.
+
+**Correção no produtor:** registrar o observador antes de chamar o router, ancorar a seleção na identidade inicial `ready`, observar trocas intermediárias de engine/modelo e transições `busy` durante a fase de roteamento, validar rota + snapshot final contra a identidade original e manter **o mesmo observador até o fim da geração**. Após seleção confirmada, o progresso legítimo `ready ↔ busy` segue permitido. O observador é liberado em `finally`, inclusive se a rota falhar.
+
+**Regressões:** testes do `tests/upstream/test_intelligence_runtime.mjs` simulam modelo A → B → A, engine A → B → A e `busy → ready` dentro do router; todos exigem **zero** invocações do backend. Um segundo pedido após a rejeição deve funcionar, demonstrando limpeza do estado por requisição. Testes anteriores de streaming legítimo, cancelamento e privacidade permanecem obrigatórios.
+
+**Limites:** isso prova a proteção do produtor contra notificações do port simulado. O OS continua autoridade da identidade dos modelos, da sessão, da integração Windows e da validação física do GGUF. Não demonstra qualidade semântica da Aura nem autoriza cutover.
