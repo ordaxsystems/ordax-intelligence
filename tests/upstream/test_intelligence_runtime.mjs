@@ -52,7 +52,10 @@ function inferencePort({
       return Object.freeze({ text: answer, engineId: resultEngineId, modelId: resultModelId });
     },
     publish(nextState) {
-      snapshot = Object.freeze({ ...snapshot, state: nextState });
+      // Allows tests to simulate the canonical Local AI snapshot changing
+      // model/engine identity as well as state during an in-flight response.
+      const patch = typeof nextState === 'string' ? { state: nextState } : nextState;
+      snapshot = Object.freeze({ ...snapshot, ...patch });
       for (const listener of listeners) listener(snapshot);
     },
   });
@@ -683,6 +686,123 @@ test("Intelligence fails closed if active engine changes after route selection",
   intelligence.dispose();
 });
 
+test("Intelligence blocks deltas if the active model switches during streaming", async () => {
+  const received = [];
+  let inference;
+  inference = inferencePort({
+    async onGenerate(_request, options) {
+      inference.publish({ state: "busy", modelId: "unauthorized-model" });
+      await options.onDelta("must not escape");
+    },
+  });
+  const intelligence = createIntelligenceRuntime({ inferencePort: inference });
+  try {
+    await assert.rejects(
+      () => intelligence.respond({ prompt: "private consultation" }, {
+        onDelta: chunk => { received.push(chunk); },
+      }),
+      /identity changed during generation/,
+    );
+    assert.deepEqual(received, [], "no chunk from a changed model may be delivered");
+    assert.equal(intelligence.getSnapshot().modelId, "unauthorized-model");
+    assert.equal(intelligence.getSnapshot().toolExecution, false);
+  } finally { intelligence.dispose(); }
+});
+
+test("Intelligence latches A-B-A model changes even if the final response claims model A", async () => {
+  let calls = 0;
+  let inference;
+  inference = inferencePort({
+    onGenerate() {
+      calls += 1;
+      if (calls === 1) {
+        inference.publish({ state: "busy", modelId: "other-model" });
+        inference.publish({ state: "ready", modelId: "qwen-small" });
+      }
+    },
+  });
+  const intelligence = createIntelligenceRuntime({ inferencePort: inference });
+  try {
+    await assert.rejects(
+      () => intelligence.respond({ prompt: "do not accept stale result" }),
+      /identity changed during generation/,
+    );
+    assert.equal(intelligence.getSnapshot().modelId, "qwen-small");
+    const next = await intelligence.respond({ prompt: "new clean request" });
+    assert.equal(next.authority, "none");
+    assert.equal(calls, 2, "request-scoped tracking must be cleaned up after rejection");
+  } finally { intelligence.dispose(); }
+});
+
+test("Intelligence latches A-B-A engine changes and blocks late streaming output", async () => {
+  const received = [];
+  let inference;
+  inference = inferencePort({
+    async onGenerate(_request, options) {
+      inference.publish({ state: "busy", engineId: "wrong-engine" });
+      inference.publish({ state: "busy", engineId: "llama.cpp" });
+      await options.onDelta("stale");
+    },
+  });
+  const intelligence = createIntelligenceRuntime({ inferencePort: inference });
+  try {
+    await assert.rejects(
+      () => intelligence.respond({ prompt: "do not stream after route change" }, {
+        onDelta: text => { received.push(text); },
+      }),
+      /identity changed during generation/,
+    );
+    assert.deepEqual(received, []);
+  } finally { intelligence.dispose(); }
+});
+
+test("Intelligence accepts normal same-model busy-to-ready transitions while streaming", async () => {
+  const received = [];
+  let inference;
+  inference = inferencePort({
+    async onGenerate(_request, options) {
+      inference.publish({ state: "busy" });
+      await options.onDelta("olá ");
+      inference.publish({ state: "ready" });
+      await options.onDelta("mundo");
+    },
+    answer: "olá mundo",
+  });
+  const intelligence = createIntelligenceRuntime({ inferencePort: inference });
+  try {
+    const result = await intelligence.respond({ prompt: "Diga olá" }, {
+      onDelta: text => { received.push(text); },
+    });
+    assert.deepEqual(received, ["olá ", "mundo"]);
+    assert.equal(result.text, "olá mundo");
+    assert.equal(result.modelId, "qwen-small");
+    assert.equal(result.authority, "none");
+  } finally { intelligence.dispose(); }
+});
+
+test("Intelligence checks model identity again after an asynchronous stream consumer callback", async () => {
+  const received = [];
+  let inference;
+  inference = inferencePort({
+    async onGenerate(_request, options) {
+      await options.onDelta("first");
+      await options.onDelta("second must be blocked");
+    },
+  });
+  const intelligence = createIntelligenceRuntime({ inferencePort: inference });
+  try {
+    await assert.rejects(
+      () => intelligence.respond({ prompt: "guard downstream callback" }, {
+        async onDelta(text) {
+          received.push(text);
+          inference.publish({ state: "busy", modelId: "different-model" });
+        },
+      }),
+      /identity changed during generation/,
+    );
+    assert.deepEqual(received, ["first"], "no second token after live identity changed");
+  } finally { intelligence.dispose(); }
+});
 test("backend absence degrades Intelligence without becoming an OS boot contract", async () => {
   const intelligence = createIntelligenceRuntime({
     inferencePort: inferencePort({ state: "unavailable" }),
