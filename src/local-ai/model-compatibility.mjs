@@ -27,6 +27,9 @@ function validateCandidate(value) {
     || typeof value.id !== "string" || !value.id
     || !Number.isSafeInteger(value.modelBytes) || value.modelBytes <= 0
     || !Number.isSafeInteger(value.engineBytes) || value.engineBytes <= 0
+    // Independently safe inputs can still overflow their computed lower
+    // bound. Never surface rounded/unsafe byte counts to Store consumers.
+    || !Number.isSafeInteger(value.modelBytes + value.engineBytes)
     || value.releaseMode !== "signed-system-release"
     || value.independentInstallAvailable !== false
     || value.independentUpdateAvailable !== false
