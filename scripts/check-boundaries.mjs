@@ -1,20 +1,20 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-const files = [];
+import { collectPortableSourceFiles } from "./source-tree.mjs";
+const files = collectPortableSourceFiles();
 // The OS owns both its Intelligence source pin and the engine/model lock.
 // Ignore generated output, dependencies, and the explicitly checked-out OS
 // upstream; inspect every first-party source/documentation path only once.
 const excludedRoots = new Set([".git", "_upstream", "node_modules", "dist"]);
-function visit(directory, collectPortable = false) {
+function visit(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     if (directory === "." && excludedRoots.has(entry.name)) continue;
     const target = join(directory, entry.name);
     if (entry.name === "source-lock.json") {
       throw new Error(`Secondary source lock forbidden: ${target}; OrdaX OS is the authority`);
     }
-    if (entry.isDirectory()) visit(target, collectPortable || (directory === "." && entry.name === "src"));
-    else if (collectPortable && entry.isFile() && target.endsWith(".mjs")) files.push(target);
+    if (entry.isDirectory()) visit(target);
   }
 }
 visit(".");
