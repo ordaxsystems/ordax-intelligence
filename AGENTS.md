@@ -54,3 +54,7 @@ Além do balanceamento compartilhado, preserve `viableContextBudgets` em `src/in
 ### Troca de modelo em voo: invariância por requisição
 
 Após escolher rota local, preserve `engineId` e `modelId` do **port Local AI do OS** durante a geração, inclusive streams. Eventos de troca e ciclo **A → B → A** invalidam a requisição, com limpeza do observador em `finally`. Verifique snapshot antes/depois de cada delta e antes da resposta final; transições `busy/ready` no mesmo modelo devem funcionar. Não implementar gerenciador paralelo, não apresentar deltas provisórios como resposta validada nem prometer revogação de deltas já entregues. Regressões em `tests/upstream/test_intelligence_runtime.mjs` e evidências em `docs/evidence/INTELLIGENCE-001-F0-BASELINE.md`.
+
+### Última checagem de identidade antes do envio à Local AI
+
+Não posicionar o último preflight **antes** de montar a entrada de inferência. O getter de preferência regional `getLocale()` e outras dependências de composição podem produzir transições síncronas; somente após preparar `systemPrompt` e `prompt` completo pode-se conferir novamente estado `ready`, identidade do modelo/motor e latch de trocas A → B → A. O próximo passo deve ser diretamente `inference.generate()`, sem getters intermediários. Preserve as regressões com zero requisições ao motor após mudanças em `tests/upstream/test_intelligence_runtime.mjs`. Port Local AI, identidade, escolha regional e ativação permanecem com o owner OS.
