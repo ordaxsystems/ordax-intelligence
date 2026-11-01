@@ -8,6 +8,8 @@ Fonte canônica do **código reutilizável do motor de inteligência e inferênc
 
 Consulte `docs/ARCHITECTURE.md`, `docs/MIGRATION.md` e `docs/OWNERSHIP.md` para acompanhar a separação verificada, o source lock no OS e os gates reais de publicação. Não criar autoridade de Memory, permissões, ações ou atualizador neste repositório.
 
+**SSOT de proveniência:** o único pin do *código portátil* consumido pelo produto é `ordax-os/docs/contracts/intelligence-source.json`. O lock separado do **motor/modelo** fica em `ordax-os/system/services/local-ai/source-lock.json`. Este repositório não publica `docs/source-lock.json` nem outro espelho dos locks do OS; `npm run check` impede sua reintrodução. Artefatos gerados podem incorporar metadados verificados, mas não definem a escolha canônica.
+
 O contrato público continua `ordax.intelligence/1`, `ordax.model-router/1` e `ordax.local-ai/1`, definido pelo `ordax-os/system/contracts`. Os módulos reutilizáveis são vinculados aos validadores canônicos pelo consumidor; contratos não são duplicados na distribuição deste pacote.
 
 ## Desenvolvimento e testes
