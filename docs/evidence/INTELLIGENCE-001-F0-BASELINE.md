@@ -116,3 +116,15 @@ Correção no **produtor**: serializa e calcula os custos reais dos contextos; s
 Novas provas: `tests/upstream/test_intelligence_runtime.mjs` combina Memory extensa com `ordax-application-catalog` e detalhe de Notes, e assegura que os dados de app ainda alcançam o backend sem exceder o limite; `tests/upstream/test_contextual_f0.mjs` passa documentos grandes pela composição **real** do OS fixado (Apps, intents, action capabilities e Memory) e exige visibilidade de informação relevante, nenhuma memória de Space B e nenhuma autoridade executora. As regressões anteriores de serialização/escape, locale e input máximo permanecem obrigatórias.
 
 Limitação: a política é um balanceamento estrutural, não uma busca por relevância. Se os metadados forem grandes demais ou o pedido do usuário consumir quase todo o orçamento, alguns itens autorizados ainda serão omitidos (com sinalização quando couber). Resultados são testes de contrato com backend simulado: a qualidade do GGUF em Windows físico **segue sem comprovação**. O OS ainda controla a versão instalada, a Memory, a indexação e o cutover.
+
+## 9. Prontidão física e lacuna de catálogo no OS (2026-11-01)
+
+**Prova física de leitura:** um Desktop Windows autorizado estava online, mas não havia processo `llama-server`, `ollama` ou LM Studio nem listener local nas portas consultadas (`17865`, `11434`, `8080` e `1234`). Os executáveis consultados não estavam no PATH. Não é prova de ausência de todo modelo em disco/outro dispositivo; apenas nenhum backend disponível para inferência física nessa máquina durante a verificação. Não houve instalação, download ou execução de GGUF.
+
+**Source e ativação:** `ordax-os/main/docs/contracts/intelligence-source.json` ainda fixa `source_commit=a39c8ddcba1ac466a3697e03c20e0a8f186e4fc8`, com `status=integration-candidate`, `cutover_complete=false` e `activation_authorized=false`. Uma CI verde no produtor não demonstra que o OrdaX Desktop recebeu o novo código.
+
+**Lacuna OS reproduzível:** em `ordax-os/system/services/intelligence/application-context.mjs`, o catálogo verificado só é acrescentado quando `appendIfFits()` encontra espaço em `INTELLIGENCE_MAX_CONTEXT_TOTAL_CHARS`. Uma entrada já saturada pode omitir o catálogo e os detalhes/capacidades de apps antes do Intelligence. A divisão de orçamento no produtor não recupera informação nunca encaminhada. O teste `tests/upstream/test_contextual_f0.mjs` produz esse cenário com os serviços reais do checkout OS fixado e registra o bloqueio sem fingir êxito.
+
+**Owner da correção:** `ordax-os` deve reservar orçamento para catálogo/intent verificados ou disponibilizar um estado canônico de contexto incompleto, sem ultrapassar as cotas, burlar Memory ou criar outro registry. Depois é necessária inferência real Windows com engine/modelo autorizados, identidade/Space e logs seguros.
+
+**Mitigação consultiva no produtor:** o prompt agora explica que ausência/truncamento de evidência não confirma instalação, ausência, capacidade ou execução de apps. Esse texto é uma instrução ao modelo, não uma garantia de obediência. A avaliação semântica com GGUF físico continua pendente.

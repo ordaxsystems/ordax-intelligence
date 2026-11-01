@@ -99,6 +99,35 @@ test("Ordax Intelligence refuses an in-flight completion after disposal without 
   assert.equal(generated, 1);
 });
 
+test("Intelligence marks missing app evidence as unknown in the consultative system prompt", async () => {
+  const observed = [];
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inferencePort({ onGenerate(request) { observed.push(request); } }),
+  });
+  try {
+    await intelligence.respond({ prompt: "O Notes está instalado e já criou minha nota?" });
+    await intelligence.respond({
+      prompt: "O Studio existe?",
+      context: [{
+        id: "memory", scope: "user", text: "Only personal user memory.", provenance: "os-authorized",
+      }],
+    });
+    assert.equal(observed.length, 2);
+    for (const request of observed) {
+      assert.match(request.systemPrompt, /Do not assert an application is installed, absent, available/);
+      assert.match(request.systemPrompt, /its status cannot be verified/);
+      assert.match(request.systemPrompt, /missing context is not proof/);
+      assert.match(request.systemPrompt, /may be truncated or omitted/);
+      assert.match(request.systemPrompt, /Never claim to have executed tools or changed system state/);
+      assert.match(request.systemPrompt, /no implicit authority/);
+      assert.doesNotMatch(request.prompt, /Never claim to have executed tools/);
+    }
+    assert.equal(intelligence.getSnapshot().toolExecution, false);
+    assert.equal(intelligence.getSnapshot().authority, "none");
+  } finally {
+    intelligence.dispose();
+  }
+});
 test("Ordax Intelligence consumes bounded provenance-bearing context through local inference", async () => {
   let generated = null;
   const intelligence = createIntelligenceRuntime({
