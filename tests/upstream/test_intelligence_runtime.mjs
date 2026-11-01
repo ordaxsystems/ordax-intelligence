@@ -199,6 +199,99 @@ test("Intelligence maps intent to provider-neutral model purpose", async () => {
   intelligence.dispose();
 });
 
+test("portable Intelligence follows the OS regional locale without caching the prior preference", async () => {
+  const prompts = [];
+  let locale = "pt-BR";
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inferencePort({
+      onGenerate(request) { prompts.push(request.systemPrompt); },
+    }),
+    getLocale: () => locale,
+  });
+  try {
+    await intelligence.respond({ intent: "ask", prompt: "Responda em português" });
+    locale = "en-US";
+    await intelligence.respond({ intent: "ask", prompt: "Hello" });
+    locale = "es-ES";
+    await intelligence.respond({ intent: "ask", prompt: "Hola" });
+    assert.equal(prompts.length, 3);
+    assert.match(prompts[0], /OrdaX system response language: Brazilian Portuguese/);
+    assert.match(prompts[1], /OrdaX system response language: English/);
+    assert.match(prompts[2], /OrdaX system response language: Spanish/);
+    assert.ok(prompts.every(value => value.includes("no implicit authority")));
+    assert.ok(prompts.every(value => value.includes("explicit user request")));
+  } finally {
+    intelligence.dispose();
+  }
+});
+
+test("portable Intelligence refuses unsupported OS locale before sharing context with inference", async () => {
+  let generated = 0;
+  let locale = "unknown-locale";
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inferencePort({ onGenerate() { generated += 1; } }),
+    getLocale: () => locale,
+  });
+  try {
+    await assert.rejects(
+      () => intelligence.respond({
+        prompt: "Private note",
+        context: [{ id: "private-note", scope: "document", text: "secret", provenance: "local" }],
+      }),
+      /Unsupported regional.locale/,
+    );
+    assert.equal(generated, 0);
+    locale = "pt-BR";
+    await intelligence.respond({ prompt: "Consulta autorizada" });
+    assert.equal(generated, 1);
+  } finally {
+    intelligence.dispose();
+  }
+});
+
+test("portable Intelligence preserves backward-compatible unconfigured locale", async () => {
+  let systemPrompt = null;
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inferencePort({ onGenerate(request) { systemPrompt = request.systemPrompt; } }),
+  });
+  try {
+    await intelligence.respond({ prompt: "sem preference getter" });
+    assert.match(systemPrompt, /Ordax Intelligence/);
+    assert.doesNotMatch(systemPrompt, /OrdaX system response language:/);
+  } finally {
+    intelligence.dispose();
+  }
+});
+
+test("portable Intelligence requires the OS validator if locale getter is provided", async () => {
+  const { bindIntelligenceContracts } = await import("../../src/index.mjs");
+  const [intelligenceContracts, localAiContracts, routerContracts] = await Promise.all([
+    import("../../_upstream/ordax-os/system/contracts/intelligence.mjs"),
+    import("../../_upstream/ordax-os/system/contracts/local-ai.mjs"),
+    import("../../_upstream/ordax-os/system/contracts/model-router.mjs"),
+  ]);
+  const inject = {
+    intelligence: intelligenceContracts, localAi: localAiContracts, modelRouter: routerContracts,
+  };
+  const unbound = bindIntelligenceContracts(inject);
+  assert.throws(
+    () => unbound.createIntelligenceRuntime({
+      inferencePort: inferencePort(), getLocale: () => "pt-BR",
+    }),
+    /Canonical OS regional.locale validator is required/,
+  );
+  assert.throws(
+    () => bindIntelligenceContracts({
+      ...inject, regionalLocalePreference: { id: "different.preference", validate: value => value },
+    }),
+    /Canonical OS regional.locale preference validator is required/,
+  );
+  assert.throws(
+    () => createIntelligenceRuntime({ inferencePort: inferencePort(), getLocale: "pt-BR" }),
+    /locale getter must be a function/,
+  );
+});
+
 test("Intelligence revalidates injected router output before inference", async () => {
   let generated = false;
   const router = Object.freeze({
