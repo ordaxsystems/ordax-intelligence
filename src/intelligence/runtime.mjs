@@ -344,11 +344,22 @@ function createIntelligenceRuntime({ inferencePort, modelRouterPort = null, getL
       listeners.add(observeIdentity);
       try {
         assertIdentityCurrent();
-        const result = await inference.generate({
+        // The OS locale resolver runs synchronously during input assembly.
+        // It may publish a model switch or a busy/stopped transition after
+        // our earlier preflight check. Do not hand the context to that backend
+        // and reject only after it has already received the private prompt.
+        const inferenceInput = {
           systemPrompt: systemPromptForLocale(getLocale),
           prompt: renderRequest(request, route),
           maxTokens: request.maxTokens,
-        }, {
+        };
+        const dispatchSnapshot = inference.getSnapshot();
+        if (identityChanged || dispatchSnapshot.state !== 'ready'
+            || dispatchSnapshot.engineId !== route.engineId
+            || dispatchSnapshot.modelId !== route.modelId) {
+          throw new Error('Local inference identity or readiness changed before dispatch');
+        }
+        const result = await inference.generate(inferenceInput, {
           signal,
           onDelta: onDelta === null ? null : async (delta) => {
             assertAlive();
