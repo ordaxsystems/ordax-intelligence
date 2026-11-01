@@ -307,3 +307,7 @@ Regressões com validador OS real no adaptador verificam mudança de modelo, vol
 ## INTELLIGENCE-001 F0 — cancelar ou descartar durante montagem do prompt (2026-11-01)
 
 Após resolver idioma e construir o prompt, a última checagem de rota já impedia troca de modelo antes do envio; faltava revalidar cancelamento e ciclo de vida nesse mesmo ponto. O produtor agora bloqueia `generate()` com `assertAlive()` e `signal.aborted` após a última leitura de snapshot. Três regressões provam ausência de qualquer chamada ao modelo quando a preferência regional cancela, descarta o runtime ou quando a leitura final do snapshot cancela a requisição. Não altera OS, Local AI, grants, sessão, engine, contratos nem source lock; F0 física em Windows permanece pendente.
+
+## INTELLIGENCE-001 F0 — latch antes da seleção da rota (2026-11-01)
+
+O produtor registrava a observação de modelo apenas depois do router. Uma troca transitória A → B → A durante `route()` podia escapar do controle, pois a rota retornada e o snapshot final coincidiam. O observador agora começa antes da seleção, prende a identidade inicial, rejeita mudanças transitórias de engine/modelo e concorrência `busy → ready` durante o roteamento, e permanece ativo até o término da inferência. A porta e o roteador do OS continuam como única autoridade; nenhum contrato ou source pin mudou. Testes adversariais no checkout fixado exigem zero envios à inferência nos três casos. Consulte [evidências F0](evidence/INTELLIGENCE-001-F0-BASELINE.md).
