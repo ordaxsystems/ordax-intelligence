@@ -304,6 +304,35 @@ test("F0: pinned OS Apps + Memory context survives verbose authorized documents"
     harness.core.dispose();
   }
 });
+test("F0: account for upstream catalog omission under a saturated OS context budget", async t => {
+  // The OS app wrapper currently appends the catalog only if its own 65536-char
+  // context cap has room. A producer cannot reconstruct data it never received.
+  const harness = compose();
+  try {
+    const context = Array.from({ length: 8 }, (_, i) => ({
+      id: `saturated-document-${i}`, scope: "document",
+      text: "Q".repeat(8192), provenance: "authorized-fixture",
+    }));
+    const result = await harness.aura.respond({ prompt: "O Notes está instalado?", context });
+    assert.equal(result.authority, "none");
+    assert.equal(harness.inference.calls.length, 1);
+    const { request } = harness.inference.calls[0];
+    const catalogPresent = request.prompt.includes("[system:ordax-application-catalog]");
+    assert.ok(request.prompt.length <= 32768);
+    assert.match(request.systemPrompt, /its status cannot be verified/);
+    assert.match(request.systemPrompt, /missing context is not proof/);
+    if (!catalogPresent) {
+      assert.ok(!request.prompt.includes("[system:ordax-application-detail:notes]"));
+      assert.ok(!request.prompt.includes("[system:ordax-application-action-capabilities]"));
+      t.diagnostic("UPSTREAM F1 BLOCKER: OS omitted verified app catalog before portable Intelligence; no model-quality claim");
+    } else {
+      t.diagnostic("Upstream app catalog present under full context; re-evaluate OS integration gate");
+    }
+    assert.equal(harness.aura.getSnapshot().toolExecution, false);
+  } finally {
+    harness.core.dispose();
+  }
+});
 test("F0: OS app-context owner refuses caller spoofing its system projection", async () => {
   const harness = compose();
   try {
