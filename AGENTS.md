@@ -46,3 +46,7 @@ O producer **não pode truncar o primeiro item longo e descartar automaticamente
 ### Contexto ausente não equivale a aplicativo ausente
 
 A composição OS pode deixar de anexar catálogos/intents quando o orçamento upstream já estiver saturado. O produtor mantém instruções explícitas para não afirmar instalação, ausência, capacidade ou execução sem evidência atual. Preserve o teste de `systemPrompt` em `tests/upstream/test_intelligence_runtime.mjs` e o diagnóstico de saturação em `tests/upstream/test_contextual_f0.mjs`. Um teste com backend simulado **não** confirma obediência do GGUF. Documentar essa lacuna como **dependência do owner OS** em `docs/evidence/INTELLIGENCE-001-F0-BASELINE.md`; não criar outro catálogo, indexador, memória ou permissões no Intelligence.
+
+### Contextos com metadados maiores que sua parcela
+
+Além do balanceamento compartilhado, preserve `viableContextBudgets` em `src/intelligence/runtime.mjs`: um item cujo ID/proveniência JSON escapados e texto mínimo não caibam na parcela deve devolver o orçamento aos contextos restantes. Nunca tratar parcela reservada como contexto efetivamente emitido; não reordenar/elevar escopos nem mudar os limites do OS. Regressões de prompt máximo, fontes inviáveis e catálogo viável ficam em `tests/upstream/test_intelligence_runtime.mjs` e na evidência F0. Não implementar RAG/Memory/catálogo paralelo para resolver orçamento de input.
