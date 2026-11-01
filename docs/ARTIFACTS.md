@@ -5,3 +5,7 @@ O comando `npm run package` prepara `dist/ordax-intelligence-source-0.1.0-dev.0.
 O recibo registra `activationAuthorized=false` e o pacote permanece `unsigned-source-handoff`. Esse fluxo é somente uma fonte versionável para consumo pelo pipeline verificado do OS. O OS mantém o único verificador de assinatura, slot/ativação, rollback, licença e ciclo de vida. Integrar os commits fixados e verificar a ABI Buildroot antes de qualquer artefato instalável. Nunca ativar um tar baixado sem atestação/autorização do OS.
 
 As dimensões físicas, tempo de resposta, RAM/CPU, integridade da Base, QEMU e notebooks reais não foram medidos por esta CI. Não classificar pacote de source como inferência local funcional ou release de usuário.
+
+## Integridade do recibo de proveniência
+
+`npm run package:verify` exige identidade **byte a byte** tanto do `.tar` quanto de `dist/receipt.json`, reconstruídos a partir do source atual. Nenhuma alteração em `activationAuthorized`, `kind`, `engineIncluded`, `modelIncluded`, nome, SHA-256, tamanho, campos extras ou serialização do recibo é aceita. Links simbólicos sob `src/` são rejeitados em vez de serem silenciosamente omitidos. Isso é um gate de integridade de desenvolvimento, **não** uma assinatura ou autorização de ativação pelo OS.
