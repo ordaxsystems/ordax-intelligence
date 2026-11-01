@@ -58,3 +58,7 @@ Após escolher rota local, preserve `engineId` e `modelId` do **port Local AI do
 ### Última checagem de identidade antes do envio à Local AI
 
 Não posicionar o último preflight **antes** de montar a entrada de inferência. O getter de preferência regional `getLocale()` e outras dependências de composição podem produzir transições síncronas; somente após preparar `systemPrompt` e `prompt` completo pode-se conferir novamente estado `ready`, identidade do modelo/motor e latch de trocas A → B → A. O próximo passo deve ser diretamente `inference.generate()`, sem getters intermediários. Preserve as regressões com zero requisições ao motor após mudanças em `tests/upstream/test_intelligence_runtime.mjs`. Port Local AI, identidade, escolha regional e ativação permanecem com o owner OS.
+
+### Cancelamento no preflight final do modelo
+
+Não remover o gate de `assertAlive()` + `signal.aborted` **após** construir `inferenceInput` e ler o snapshot final, imediatamente antes de `inference.generate()`. Dependências síncronas do OS, especialmente `getLocale()`, podem cancelar ou descartar o runtime sem trocar engine/modelo. A porta Local AI deve receber **zero** prompts nesse caso, mesmo que seu adaptador ignore um AbortSignal já abortado. Regressões obrigatórias em `tests/upstream/test_intelligence_runtime.mjs`; não criar cancelador ou autoridade paralela.
