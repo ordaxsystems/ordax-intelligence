@@ -97,7 +97,7 @@ function includesExpectedSignal(text, normalizedPhrase) {
     // Unicode-safe preceding code point; longer suffixes are intentional
     // because F0 expected indicators include morphological stems.
     const previous = Array.from(text.slice(0, index)).at(-1);
-    if (previous === undefined || !/[\\p{L}\\p{N}]/u.test(previous)) return true;
+    if (previous === undefined || !/[\p{L}\p{N}]/u.test(previous)) return true;
     index = text.indexOf(normalizedPhrase, index + 1);
   }
   return false;
