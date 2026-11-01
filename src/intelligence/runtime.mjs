@@ -168,6 +168,17 @@ function createIntelligenceRuntime({ inferencePort, modelRouterPort = null } = {
       if (route.provider !== "local") {
         throw new Error("External model execution is not enabled in the Stable/MVP runtime");
       }
+      // Check the selected route against the live inference port before any
+      // prompt or authorized context leaves Intelligence. Comparing only the
+      // result identity is too late for an injected/stale router.
+      const selected = inference.getSnapshot();
+      if (
+        selected.state !== "ready"
+        || selected.engineId !== route.engineId
+        || selected.modelId !== route.modelId
+      ) {
+        throw new Error("Local inference identity changed after route selection");
+      }
       const result = await inference.generate({
         systemPrompt: INTELLIGENCE_SYSTEM_PROMPT,
         prompt: renderRequest(request, route),

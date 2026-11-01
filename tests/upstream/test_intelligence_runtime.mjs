@@ -257,6 +257,74 @@ test("Intelligence refuses external model execution in MVP", async () => {
   intelligence.dispose();
 });
 
+test("Intelligence blocks a stale injected route before forwarding the prompt", async () => {
+  let generated = 0;
+  const inference = inferencePort({
+    engineId: "llama.cpp",
+    modelId: "qwen-small",
+    onGenerate() { generated += 1; },
+  });
+  const router = Object.freeze({
+    schema: MODEL_ROUTER_PORT_SCHEMA,
+    route(request) {
+      return validateModelRoute({
+        provider: "local",
+        engineId: "llama.cpp",
+        modelId: "another-local-model",
+        purpose: request.purpose,
+      });
+    },
+  });
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inference,
+    modelRouterPort: router,
+  });
+  try {
+    await assert.rejects(
+      () => intelligence.respond({
+        prompt: "private consultation",
+        context: [{ id: "sensitive-note", scope: "document", text: "private", provenance: "local-note" }],
+      }),
+      /identity changed after route selection/,
+    );
+    assert.equal(generated, 0, "no text or context may reach a mismatched model");
+    assert.equal(intelligence.getSnapshot().state, "ready");
+  } finally {
+    intelligence.dispose();
+  }
+});
+
+test("Intelligence rechecks readiness if a router changes backend state during route selection", async () => {
+  let generated = 0;
+  const inference = inferencePort({ onGenerate() { generated += 1; } });
+  const router = Object.freeze({
+    schema: MODEL_ROUTER_PORT_SCHEMA,
+    route(request) {
+      inference.publish("busy");
+      return validateModelRoute({
+        provider: "local",
+        engineId: "llama.cpp",
+        modelId: "qwen-small",
+        purpose: request.purpose,
+      });
+    },
+  });
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inference,
+    modelRouterPort: router,
+  });
+  try {
+    await assert.rejects(
+      () => intelligence.respond({ prompt: "do not send while the backend is busy" }),
+      /identity changed after route selection/,
+    );
+    assert.equal(generated, 0, "no inference starts after the route becomes stale");
+    assert.equal(intelligence.getSnapshot().state, "busy");
+  } finally {
+    intelligence.dispose();
+  }
+});
+
 test("Intelligence fails closed if active model changes after route selection", async () => {
   const intelligence = createIntelligenceRuntime({
     inferencePort: inferencePort({ resultModelId: "other-model" }),
