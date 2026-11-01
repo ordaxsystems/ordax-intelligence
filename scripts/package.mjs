@@ -7,6 +7,12 @@ const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 requireRegularPath("package.json", "file");
 const packageBytes = readFileSync("package.json");
 const pkg = JSON.parse(packageBytes.toString("utf8"));
+// The version is part of the artifact filename. Permit the established
+// release/test versions, but never path separators, control bytes or escapes.
+if (typeof pkg.version !== "string"
+  || !/^[A-Za-z0-9][A-Za-z0-9._+-]{0,79}$/.test(pkg.version)) {
+  throw new Error("Invalid source handoff package version");
+}
 const files = collectPortableSourceFiles();
 const members=files.map(path=>({path,body:readFileSync(path)}));
 members.push({path:"package.json",body:packageBytes});
@@ -14,10 +20,19 @@ const manifest={schema:"ordax.intelligence-artifact/1",kind:"unsigned-source-han
 const manifestBytes=Buffer.from(JSON.stringify(manifest,null,2)+"\n");
 members.push({path:"manifest.json",body:manifestBytes});
 function tarHeader(name,length){
+  // This writer emits classic ustar name fields, not PAX extended paths.
+  // Buffer.write(..., "ascii") would silently corrupt UTF-8 filenames while
+  // the JSON manifest still recorded the original name. Fail before writing
+  // any artifact instead of producing a receipt for an unextractable archive.
+  if (typeof name !== "string" || !/^[\x20-\x7e]+$/.test(name)
+    || name.startsWith("/") || name.includes("\\")
+    || name.split("/").some(part => !part || part === "." || part === "..")
+    || Buffer.byteLength(name, "ascii") > 100) {
+    throw new Error("Unsafe or non-ASCII ustar member path: " + JSON.stringify(name));
+  }
   const buf=Buffer.alloc(512);
   const str=(offset,width,value)=>buf.write(value,offset,Math.min(width,Buffer.byteLength(value)),"ascii");
   const oct=(offset,width,n)=>str(offset,width,n.toString(8).padStart(width-1,"0")+"\0");
-  if(Buffer.byteLength(name)>100)throw Error("tar member too long");
   str(0,100,name);oct(100,8,0o644);oct(108,8,0);oct(116,8,0);oct(124,12,length);oct(136,12,0);
   buf.fill(32,148,156);str(156,1,"0");str(257,6,"ustar\0");str(263,2,"00");
   const sum=buf.reduce((n,b)=>n+b,0);oct(148,8,sum);
