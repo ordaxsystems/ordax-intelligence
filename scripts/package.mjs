@@ -33,6 +33,8 @@ const receipt={schema:"ordax.intelligence-build-receipt/1",kind:"unsigned-source
 mkdirSync("dist",{recursive:true});
 requireRegularPath("dist", "directory");
 const dest=join("dist",receipt.archive),receiptPath=join("dist","receipt.json");
+requireRegularPath(dest, "file", { allowMissing: true });
+requireRegularPath(receiptPath, "file", { allowMissing: true });
 if(process.argv.includes("--verify")){
   const old=readFileSync(dest);
   const expectedReceipt=Buffer.from(JSON.stringify(receipt,null,2)+"\n");
