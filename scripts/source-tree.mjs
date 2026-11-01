@@ -3,8 +3,13 @@
 import { lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-export function requireRegularPath(path, kind) {
-  const info = lstatSync(path);
+export function requireRegularPath(path, kind, { allowMissing = false } = {}) {
+  // lstat (not stat) also detects dangling symlinks. An output file which
+  // does not exist yet is fine; a pre-existing link must never be followed.
+  const info = allowMissing
+    ? lstatSync(path, { throwIfNoEntry: false })
+    : lstatSync(path);
+  if (allowMissing && info === undefined) return;
   if (info.isSymbolicLink() ||
       !(kind === "directory" ? info.isDirectory() : kind === "file" && info.isFile())) {
     throw new Error(`Non-regular ${kind} forbidden in source handoff: ${path}`);
