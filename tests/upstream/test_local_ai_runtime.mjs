@@ -173,7 +173,7 @@ test("local AI probes loopback and separates system policy from user prompt", as
       return {
         ok: true,
         async json() {
-          return { choices: [{ message: { content: "resposta local" } }] };
+          return { choices: [{ message: { content: "resposta local" }, finish_reason: "stop" }] };
         },
       };
     },
@@ -207,7 +207,7 @@ test("local AI keeps backward-compatible user-only messages when no system promp
       return {
         ok: true,
         async json() {
-          return { choices: [{ message: { content: "ok" } }] };
+          return { choices: [{ message: { content: "ok" }, finish_reason: "stop" }] };
         },
       };
     },
@@ -229,7 +229,7 @@ test("local AI rejects oversized completion envelope before JSON parsing", async
         return { ok: true };
       }
       return new Response(JSON.stringify({
-        choices: [{ message: { content: "small valid completion" } }],
+        choices: [{ message: { content: "small valid completion" }, finish_reason: "stop" }],
         padding: "x".repeat(LOCAL_AI_MAX_COMPLETION_RESPONSE_BYTES),
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     },
@@ -294,7 +294,7 @@ test("local AI rejects malformed or oversized completion text at the provider bo
         return {
           ok: true,
           async json() {
-            return { choices: [{ message: { content: invalidContent } }] };
+            return { choices: [{ message: { content: invalidContent }, finish_reason: "stop" }] };
           },
         };
       },
@@ -368,7 +368,7 @@ test("local AI probe does not reset a busy inference", async () => {
       return {
         ok: true,
         async json() {
-          return { choices: [{ message: { content: "ok" } }] };
+          return { choices: [{ message: { content: "ok" }, finish_reason: "stop" }] };
         },
       };
     },
@@ -448,7 +448,7 @@ test("local AI rejects a successful completion that reports a different model", 
         async json() {
           return {
             model: "unexpected-model",
-            choices: [{ message: { content: "wrong model" } }],
+            choices: [{ message: { content: "wrong model" }, finish_reason: "stop" }],
           };
         },
       };
@@ -472,7 +472,7 @@ test("local AI accepts a completion reporting its configured model", async () =>
         async json() {
           return {
             model: "ordax-small",
-            choices: [{ message: { content: "valid result" } }],
+            choices: [{ message: { content: "valid result" }, finish_reason: "stop" }],
           };
         },
       };
@@ -538,7 +538,7 @@ test("Local AI discards a late completion from a fetch adapter that ignores abor
       return new Promise((resolve) => {
         finish = () => resolve({
           ok: true,
-          async json() { return { choices: [{ message: { content: "late private answer" } }] }; },
+          async json() { return { choices: [{ message: { content: "late private answer" }, finish_reason: "stop" }] }; },
         });
       });
     },

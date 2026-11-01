@@ -33,7 +33,7 @@ test("an older health probe cannot publish ready over an active generation", asy
         return {
           ok: true,
           async json() {
-            return { choices: [{ message: { content: "ok" } }] };
+            return { choices: [{ message: { content: "ok" }, finish_reason: "stop" }] };
           },
         };
       }

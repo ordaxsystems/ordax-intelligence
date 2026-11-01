@@ -177,6 +177,39 @@ test("without a discovered model the real loopback remains unavailable, with no 
   local.dispose();
 });
 
+test("real buffered HTTP requires a verified terminal stop marker", async (t) => {
+  for (const [name, finishReason] of [
+    ["missing finish_reason", undefined],
+    ["null finish_reason", null],
+  ]) {
+    await t.test(name, async (subtest) => {
+      let posts = 0;
+      const endpoint = await loopback(subtest, (request, response) => {
+        assert.equal(request.url, "/v1/chat/completions");
+        posts += 1;
+        const choice = {
+          index: 0,
+          message: { role: "assistant", content: "possibly incomplete" },
+        };
+        if (finishReason !== undefined) choice.finish_reason = finishReason;
+        json(response, { model: MODEL, choices: [choice] });
+      });
+      const runtime = createLocalAiRuntime({ endpoint, modelId: MODEL });
+      try {
+        assert.equal((await runtime.probe()).state, "ready");
+        await assert.rejects(
+          runtime.generate({ prompt: "Require verified complete text" }),
+          /completion.*(invalid|unsupported)/i,
+        );
+        assert.equal(posts, 1, "incomplete completion must not trigger retries");
+        assert.equal(runtime.getSnapshot().state, "ready");
+      } finally {
+        runtime.dispose();
+      }
+    });
+  }
+});
+
 test("a real HTTP response with finish_reason=length is not treated as complete", async (t) => {
   const endpoint = await loopback(t, (request, response) => {
     json(response, {

@@ -96,7 +96,7 @@ test("failed generation rediscovery adopts a new dynamic model without retrying 
         return {
           ok: true,
           async json() {
-            return { choices: [{ message: { content: "second succeeds" } }] };
+            return { choices: [{ message: { content: "second succeeds" }, finish_reason: "stop" }] };
           },
         };
       }
@@ -142,7 +142,7 @@ test("configured Local AI model remains fixed and never calls discovery", async 
         return {
           ok: true,
           async json() {
-            return { choices: [{ message: { content: "ok" } }] };
+            return { choices: [{ message: { content: "ok" }, finish_reason: "stop" }] };
           },
         };
       }
