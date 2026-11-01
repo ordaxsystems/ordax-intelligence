@@ -69,3 +69,24 @@ O teste exige **zero chamadas de execução** porque a cadeia não possui porta 
 - `ordax.intelligence/1` permanece `toolExecution=false`, `authority=none`; testes de modelo não podem conceder acesso a ferramentas.
 - Contratos/armazenamento/ativação pertencem ao OS; UI e confirmação à Aura; o Intelligence não modifica outras camadas. Sem aprovação de backend, sem embeddings e sem egress.
 - Só atualizar F0 como **concluída integralmente** quando existir evidência de respostas reais do modelo, além da cobertura sintética.
+
+## 5. Avaliação de respostas — canários F0 (2026-11-01)
+
+A matriz existente `tests/fixtures/contextual-f0.json` ganhou **rubricas de respostas**, mantendo os mesmos seis IDs de cenários (sem outro catálogo ou fixture de conteúdo). `tools/evaluation/score-contextual-f0.mjs` fornece `--template` para gerar o formulário local de respostas e `--score RESPONSES.json` para pontuar somente **respostas já obtidas por um fluxo aprovado** do OS/Aura. O avaliador nunca faz requisições à rede, não instala modelo, não consulta dados pessoais e não concede permissões.
+
+Cada rubrica publica `category`, `requireAny` e `forbidAny`: grounding de apps/métricas, reconhecimento de app ausente, proibição de afirmar uma ação executada e não divulgação de marcas de outro Space. Trata-se de **canários lexicais transparentes**, não um juiz LLM nem um benchmark geral de raciocínio. Uma resposta pode satisfazer uma substring e ainda estar semanticamente errada; por isso o resultado **não certifica qualidade do modelo**. O `tests/contextual-quality.test.mjs` valida gabaritos sintéticos, negativos de privacidade/segurança, inputs estritos, ausência de vazamento no relatório e códigos de saída; pontuação de fixture **não é pontuação de modelo físico**.
+
+Nenhum servidor do modelo local foi encontrado na porta padrão `17865` do computador Windows autorizado `DESKTOP-4UFL03B` na inspeção read-only de 2026-11-01; nenhuma inferência física foi executada nesta fase. O gerador de relatório deixa `physicalModelAttested=false`, `semanticQualityQualified=false` e `evidence=unattested-offline-answers` **mesmo que um operador preencha os dados com uma resposta real**. Somente o OS poderá atestar modelo, executável, hash, slot, sessão, tempo e execução física; esses campos não são forjados no produtor.
+
+**Procedimento quando houver backend aprovado:**
+
+```sh
+node tools/evaluation/score-contextual-f0.mjs --template > /caminho/local/respostas-f0.json
+# O runner autorizado OS/Aura executa os seis prompts do fixture com contexto válido;
+# preencher apenas os textos retornados e o modelId, sem dados pessoais.
+node tools/evaluation/score-contextual-f0.mjs --score /caminho/local/respostas-f0.json > /caminho/local/score-f0.json
+```
+
+O processo retorna `0` quando todos os canários passaram, `1` com falhas individuais e `2` se o arquivo de entrada viola o esquema. Nenhum dado de respostas é impresso ou salvo no relatório. O operador deve guardar a evidência física privada/sensível fora do repositório e somente registrar conclusões verificáveis sem credenciais; **não promover cutover por porcentagem de canários**.
+
+**Próximo gate F0:** o owner do OS fornece coleta vinculada ao modelo/ABI/slot real em Windows físico, e a equipe compara resultados/latência com estes casos antes de declarar qualquer capacidade de produto. O canário offline é apenas um instrumento de regressão para esse futuro teste.
