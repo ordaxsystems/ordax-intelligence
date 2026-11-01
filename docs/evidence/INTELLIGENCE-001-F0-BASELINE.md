@@ -128,3 +128,13 @@ Limitação: a política é um balanceamento estrutural, não uma busca por rele
 **Owner da correção:** `ordax-os` deve reservar orçamento para catálogo/intent verificados ou disponibilizar um estado canônico de contexto incompleto, sem ultrapassar as cotas, burlar Memory ou criar outro registry. Depois é necessária inferência real Windows com engine/modelo autorizados, identidade/Space e logs seguros.
 
 **Mitigação consultiva no produtor:** o prompt agora explica que ausência/truncamento de evidência não confirma instalação, ausência, capacidade ou execução de apps. Esse texto é uma instrução ao modelo, não uma garantia de obediência. A avaliação semântica com GGUF físico continua pendente.
+
+## 10. F0 — recuperar parcelas reservadas para contextos inviáveis (2026-11-01)
+
+Foi identificado um caso limite no balanceamento anterior: com `INTELLIGENCE_MAX_PROMPT_CHARS=32000`, contexto com ID permitido de até 160 caracteres e proveniência permitida de até 512 caracteres, o produtor podia reservar parte do limite para um item cujo mínimo JSON escapado não cabia. O item não era emitido, **mas sua parcela não era redistribuída**. Em uma requisição com múltiplos metadados grandes, esse desperdício podia omitir uma projeção curta e verificada de aplicativo que caberia no orçamento real.
+
+A correção calcula o menor custo viável de cada item e, somente quando a distribuição não o comportar, remove primeiro da distribuição o item de maior custo mínimo. Repete o cálculo até as parcelas dos itens remanescentes serem utilizáveis. As informações autorizadas mantêm a ordem original, o limite canônico e a separação entre texto do usuário e contexto. Omissões continuam explícitas quando couber.
+
+Regressões em `tests/upstream/test_intelligence_runtime.mjs`: (1) oito documentos autorizados com metadados máximos antes do catálogo de apps, solicitação no tamanho máximo, catálogo ainda no prompt e sem extrapolação; (2) fontes pequenas nas duas extremidades preservadas na ordem do OS, com documento intermediário inviável omitido. A suíte F0 de Apps/Memory e os controles de privacidade permanecem inalterados.
+
+**Prova limitada:** as verificações exercitam a composição de prompt em backend simulado, não entendimento do modelo local físico. O OS continua dono de seleção/escopo/versão do catálogo, e um item não entregue pelo OS **não pode ser recuperado** por redistribuição no produtor.

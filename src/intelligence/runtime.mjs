@@ -156,6 +156,43 @@ function fairContextBudgets(costs, available) {
   }
   return costs.map(cost => Math.min(cost, low));
 }
+
+// A capped share is useless if it cannot contain even the first nonblank
+// code point plus the mandatory JSON quote, provenance and truncation marker.
+// The OS already trims each validated context text; its first code point is
+// therefore a meaningful, bounded prefix. No item is ever inferred or added.
+function minimumContextCost({ entry, prefix, suffix, fullCost }) {
+  const firstPoint = Array.from(entry.text)[0];
+  const truncated = `${prefix}${quotedContext(firstPoint)} ${CONTEXT_TRUNCATION_MARKER}${suffix}`;
+  return Math.min(fullCost, truncated.length + 1);
+}
+
+// Reclaim a share that cannot yield a valid context item. Drop the least
+// affordable item first and redistribute among the remaining authorized
+// entries, maintaining their original order and the canonical total limit.
+// On equal minimum costs, drop the later item to preserve OS source order.
+function viableContextBudgets(entries, available) {
+  const budgets = new Array(entries.length).fill(0);
+  const minCosts = entries.map(minimumContextCost);
+  const active = entries.map((_, index) => index);
+  while (active.length > 0) {
+    const proposals = fairContextBudgets(
+      active.map(index => entries[index].fullCost), available,
+    );
+    const unfit = active.filter((index, position) => proposals[position] < minCosts[index]);
+    if (unfit.length === 0) {
+      active.forEach((index, position) => { budgets[index] = proposals[position]; });
+      break;
+    }
+    const remove = unfit.reduce((worst, index) =>
+      minCosts[index] > minCosts[worst] ||
+      (minCosts[index] === minCosts[worst] && index > worst) ? index : worst,
+    );
+    active.splice(active.indexOf(remove), 1);
+  }
+  return budgets;
+}
+
 function renderRequest(request, route) {
   const prefixLines = [
     `Intent: ${request.intent}`,
@@ -182,9 +219,7 @@ function renderRequest(request, route) {
     const fullLine = `${prefix}${quotedContext(entry.text)}${suffix}`;
     return { entry, prefix, suffix, fullLine, fullCost: fullLine.length + 1 };
   });
-  const budgets = fairContextBudgets(
-    entries.map(item => item.fullCost), remaining,
-  );
+  const budgets = viableContextBudgets(entries, remaining);
   let omitted = false;
   for (let index = 0; index < entries.length; index += 1) {
     const { entry, prefix, suffix, fullLine, fullCost } = entries[index];

@@ -322,6 +322,57 @@ test("Intelligence preserves later OS application context after large authorized
   }
 });
 
+test("Intelligence reclaims unusable shares from oversized metadata and retains verifiable app facts", async () => {
+  let generated = null;
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inferencePort({ onGenerate(request) { generated = request; } }),
+  });
+  try {
+    const tooExpensive = Array.from({ length: 8 }, (_, i) => ({
+      id: String(i) + "m".repeat(159),
+      scope: "document", text: "Z".repeat(8000),
+      provenance: "p".repeat(512),
+    }));
+    const appContext = {
+      id: "ordax-application-catalog", scope: "system",
+      text: "Verified Notes installed; intent notes.create-note; executionAuthorized=false. ".repeat(6),
+      provenance: "verified-os-catalog",
+    };
+    const userPrompt = "u".repeat(INTELLIGENCE_MAX_PROMPT_CHARS);
+    await intelligence.respond({ prompt: userPrompt, context: [...tooExpensive, appContext] });
+    assert.ok(generated);
+    assert.ok(generated.prompt.length <= LOCAL_AI_MAX_PROMPT_CHARS);
+    assert.ok(generated.prompt.endsWith("User request:\n" + userPrompt));
+    assert.match(generated.prompt, /\[system:ordax-application-catalog\]/);
+    assert.match(generated.prompt, /intent notes\.create-note; executionAuthorized=false/);
+    assert.match(generated.prompt, /authorized context omitted by local input budget/);
+    assert.equal(generated.prompt.split("\n").filter(l => l.startsWith("- [")).length, 1);
+    assert.equal(generated.prompt.split("\n").filter(l => l === "User request:").length, 1);
+    assert.equal(intelligence.getSnapshot().toolExecution, false);
+  } finally { intelligence.dispose(); }
+});
+
+test("Intelligence reclaims nonviable context without reordering affordable verified sources", async () => {
+  let generated = null;
+  const intelligence = createIntelligenceRuntime({
+    inferencePort: inferencePort({ onGenerate(request) { generated = request; } }),
+  });
+  try {
+    const largeId = "w".repeat(160);
+    const contexts = [
+      { id: "short-first", scope: "user", text: "Device preference.", provenance: "os" },
+      { id: largeId, scope: "document", text: "A".repeat(8192), provenance: "p".repeat(512) },
+      { id: "app-last", scope: "system", text: "Notes action declared.", provenance: "os-apps" },
+    ];
+    await intelligence.respond({ prompt: "u".repeat(INTELLIGENCE_MAX_PROMPT_CHARS), context: contexts });
+    const text = generated.prompt;
+    assert.match(text, /\[user:short-first\]/);
+    assert.match(text, /\[system:app-last\]/);
+    assert.ok(text.indexOf("[user:short-first]") < text.indexOf("[system:app-last]"));
+    assert.equal(text.includes("[document:" + largeId + "]"), false);
+    assert.ok(text.length <= LOCAL_AI_MAX_PROMPT_CHARS);
+  } finally { intelligence.dispose(); }
+});
 test("Intelligence emits complete short contexts without unnecessary truncation", async () => {
   let generated = null;
   const intelligence = createIntelligenceRuntime({
