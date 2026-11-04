@@ -552,6 +552,14 @@ def normalize_tree(root):
         os.utime(path, (0, 0), follow_symlinks=False)
 
 
+def stage_distributable_model(cache_path, destination):
+    """Keep verified model cache private but ship readable GGUF in EROFS."""
+    # shutil.copy2 retains the source file's 0600 permissions. The unprivileged
+    # llama-server must read the immutable image's model without root.
+    shutil.copy2(cache_path, destination)
+    Path(destination).chmod(0o644)
+
+
 def write_tree_manifest(root, destination):
     root = Path(root)
     entries = []
@@ -679,7 +687,7 @@ def build(out_dir, cache_dir):
         (runtime / "bin/llama-server").chmod(0o755)
         (runtime / "bin/ordax-local-ai").write_text(launcher_text(lock), encoding="utf-8")
         (runtime / "bin/ordax-local-ai").chmod(0o755)
-        shutil.copy2(model_path, runtime / "models" / model["filename"])
+        stage_distributable_model(model_path, runtime / "models" / model["filename"])
         shutil.copy2(SOURCE_LOCK, runtime / "metadata/source-lock.json")
         shutil.copy2(engine_license, runtime / "licenses/llama.cpp-MIT.txt")
         shutil.copy2(model_license, runtime / "licenses/model-Apache-2.0.txt")

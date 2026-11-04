@@ -22,5 +22,19 @@ class BuilderBoundaryTests(unittest.TestCase):
         self.assertFalse((ROOT/"docs/contracts/local-ai.json").exists())
         self.assertFalse((ROOT/"models").exists())
 
+    def test_verified_cache_remains_private_but_distributed_model_is_readable(self):
+        # Actual staging function: mode 0600 from the exclusive download
+        # must never survive into the read-only EROFS consumed as non-root.
+        import stat
+        with tempfile.TemporaryDirectory() as temporary:
+            cache = Path(temporary)/"model-cache.gguf"
+            distributed = Path(temporary)/"mounted-model.gguf"
+            cache.write_bytes(b"synthetic-reviewed-model-contents")
+            cache.chmod(0o600)
+            module.stage_distributable_model(cache, distributed)
+            self.assertEqual(distributed.read_bytes(), cache.read_bytes())
+            self.assertEqual(stat.S_IMODE(distributed.stat().st_mode), 0o644)
+            self.assertEqual(stat.S_IMODE(cache.stat().st_mode), 0o600)
+
 if __name__=="__main__":
     unittest.main()
