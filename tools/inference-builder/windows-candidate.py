@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -151,6 +152,45 @@ def request_json(port, route, token, payload=None, timeout=10):
     return json.loads(data)
 
 
+
+def summarize_startup_failure(stderr_file, token, key_file, model_file, returncode):
+    """Bounded, redacted pre-readiness diagnostics. Never print raw engine logs."""
+    exit_hex = f"0x{(int(returncode) & 0xffffffff):08X}"
+    ntstatus = {
+        "0xC0000135": "missing-windows-dll",
+        "0xC0000139": "missing-dll-entrypoint",
+        "0xC000001D": "illegal-cpu-instruction",
+        "0xC0000005": "access-violation",
+    }.get(exit_hex, "process-exited")
+    with Path(stderr_file).open("rb") as stream:
+        stream.seek(0, os.SEEK_END)
+        size = min(stream.tell(), 16384)
+        stream.seek(-size, os.SEEK_END)
+        lines = stream.read(size).decode("utf-8", errors="replace").splitlines()
+    safe = []
+    for line in lines:
+        # Require the error at the start or a known engine logger prefix.
+        # A random informational line merely mentioning "error" is not safe
+        # to echo into public GitHub logs.
+        if not re.search(
+            r"(?i)^\s*(?:error[:\s]|fatal[:\s]|failed\s+to\s+|"
+            r"unable\s+to\s+|could\s+not\s+|unknown\s+argument|"
+            r"invalid\s+argument|"
+            r"(?:llama|ggml)[\w:.-]{0,72}\s*:\s*.*\b(?:error|failed|fatal)\b)",
+            line,
+        ):
+            continue
+        line = line.replace(token, "[redacted]").replace(str(key_file), "[key-file]")
+        line = line.replace(str(model_file), "[model-file]")
+        line = re.sub(
+            r"(?i)(?:bearer\s+|(?:api[_ -]?key|token)\s*[:=]\s*)\S+",
+            "[redacted-secret]", line,
+        )
+        line = re.sub(r"(?i)\b[0-9a-f]{32,}\b", "[redacted-hex]", line)
+        line = re.sub(r"[\x00-\x1f\x7f]", " ", line)
+        safe.append(line.strip()[:240])
+    return f"exit={exit_hex} ({ntstatus}); engine_errors={' | '.join(safe[-4:]) or 'none'}"
+
 def prove_real_offline_inference(binary, model_file, model_id, work):
     port = ephemeral_port()
     key_file = Path(work) / "inference-ci-key"
@@ -162,49 +202,63 @@ def prove_real_offline_inference(binary, model_file, model_id, work):
             "--model", str(model_file), "--alias", model_id, "--no-ui",
             "--no-slots", "--reasoning", "off", "-ngl", "0", "-t", "2",
             "--ctx-size", "2048", "--parallel", "1"]
-    process = subprocess.Popen(args, cwd=str(binary.parent), env=env,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    startup_stderr = Path(work) / "inference-startup.stderr"
+    process = None
     try:
-        deadline = time.monotonic() + 180
-        while time.monotonic() < deadline:
-            if process.poll() is not None:
-                raise canonical.RuntimeBuildError("Pinned Windows inference engine exited before readiness")
+        with startup_stderr.open("wb") as stderr_stream:
+            process = subprocess.Popen(args, cwd=str(binary.parent), env=env,
+                                       stdout=subprocess.DEVNULL, stderr=stderr_stream)
             try:
-                health = request_json(port, "/health", token, timeout=2)
-                if health.get("status") == "ok":
-                    break
-            except (urllib.error.URLError, TimeoutError, ValueError):
-                pass
-            time.sleep(1)
-        else:
-            raise canonical.RuntimeBuildError("Pinned Windows inference did not reach real health")
-        listed = request_json(port, "/v1/models", token)
-        data = listed.get("data")
-        if not isinstance(data, list) or len(data) != 1 or data[0].get("id") != model_id:
-            raise canonical.RuntimeBuildError("Pinned Windows engine returned wrong model identity")
-        completion = request_json(port, "/v1/chat/completions", token, {
-            "model": model_id,
-            "messages": [{"role": "user", "content": "Responda apenas: teste"}],
-            "max_tokens": 20, "temperature": 0, "stream": False,
-        }, timeout=180)
-        choices = completion.get("choices")
-        if not isinstance(choices, list) or len(choices) != 1:
-            raise canonical.RuntimeBuildError("Windows inference returned invalid completion")
-        answer = choices[0].get("message")
-        if not isinstance(answer, dict) or not isinstance(answer.get("content"), str) or not answer["content"].strip():
-            raise canonical.RuntimeBuildError("Windows inference returned no actual generated text")
-        if any(k in answer for k in ("tool_calls", "function_call")):
-            raise canonical.RuntimeBuildError("Windows consultative inference advertised tool authority")
-        return {"real_model_loaded": True, "real_completion": True,
-                "model_id": model_id, "local_loopback": True}
+                deadline = time.monotonic() + 180
+                while time.monotonic() < deadline:
+                    if process.poll() is not None:
+                        stderr_stream.flush()
+                        detail = summarize_startup_failure(
+                            startup_stderr, token, key_file, model_file, process.returncode,
+                        )
+                        raise canonical.RuntimeBuildError(
+                            "Pinned Windows inference engine exited before readiness: " + detail
+                        )
+                    try:
+                        health = request_json(port, "/health", token, timeout=2)
+                        if health.get("status") == "ok":
+                            break
+                    except (urllib.error.URLError, TimeoutError, ValueError):
+                        pass
+                    time.sleep(1)
+                else:
+                    raise canonical.RuntimeBuildError("Pinned Windows inference did not reach real health")
+                listed = request_json(port, "/v1/models", token)
+                data = listed.get("data")
+                if not isinstance(data, list) or len(data) != 1 or data[0].get("id") != model_id:
+                    raise canonical.RuntimeBuildError("Pinned Windows engine returned wrong model identity")
+                completion = request_json(port, "/v1/chat/completions", token, {
+                    "model": model_id,
+                    "messages": [{"role": "user", "content": "Responda apenas: teste"}],
+                    "max_tokens": 20, "temperature": 0, "stream": False,
+                }, timeout=180)
+                choices = completion.get("choices")
+                if not isinstance(choices, list) or len(choices) != 1:
+                    raise canonical.RuntimeBuildError("Windows inference returned invalid completion")
+                answer = choices[0].get("message")
+                if not isinstance(answer, dict) or not isinstance(answer.get("content"), str) or not answer["content"].strip():
+                    raise canonical.RuntimeBuildError("Windows inference returned no actual generated text")
+                if any(k in answer for k in ("tool_calls", "function_call")):
+                    raise canonical.RuntimeBuildError("Windows consultative inference advertised tool authority")
+                return {"real_model_loaded": True, "real_completion": True,
+                        "model_id": model_id, "local_loopback": True}
+            finally:
+                if process is not None:
+                    if process.poll() is None:
+                        process.terminate()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=10)
     finally:
-        process.terminate()
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=10)
         key_file.unlink(missing_ok=True)
+        startup_stderr.unlink(missing_ok=True)
 
 
 def validate_proof_paths(out_dir, cache_dir):

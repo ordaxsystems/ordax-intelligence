@@ -67,6 +67,89 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
             self.assertIn("Release", build)
             self.assertIn("llama-server", build)
 
+    def test_startup_exit_reports_bounded_redacted_error_and_cleans_credentials(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = pathlib.Path(temporary)
+            secret = []
+            model = work / "model.gguf"
+
+            class Exited:
+                returncode = 1
+                def poll(self):
+                    return 1
+                def wait(self, timeout=None):
+                    return 1
+                def terminate(self):
+                    raise AssertionError("Do not terminate an already exited process")
+
+            def launch(_args, **options):
+                key_path = pathlib.Path(options["env"]["LLAMA_ARG_API_KEY_FILE"])
+                token = key_path.read_text(encoding="ascii").strip()
+                secret.append(token)
+                options["stderr"].write(
+                    f"error: ggml backend failed model={model} token={token}\\n".encode()
+                )
+                options["stderr"].flush()
+                return Exited()
+
+            with patch.object(candidate.subprocess, "Popen", side_effect=launch):
+                with self.assertRaisesRegex(
+                    candidate.canonical.RuntimeBuildError, "exited before readiness"
+                ) as error:
+                    candidate.prove_real_offline_inference(
+                        work / "llama-server.exe", model, "test-model", work
+                    )
+            message = str(error.exception)
+            self.assertIn("exit=0x00000001", message)
+            self.assertIn("ggml backend failed", message)
+            self.assertNotIn(secret[0], message)
+            self.assertNotIn(str(model), message)
+            self.assertIn("[redacted-secret]", message)
+            self.assertIn("[model-file]", message)
+            self.assertFalse((work / "inference-ci-key").exists())
+            self.assertFalse((work / "inference-startup.stderr").exists())
+
+    def test_startup_status_recognizes_missing_dll_without_leaking_raw_log(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = pathlib.Path(temporary)
+            log = work / "stderr"
+            log.write_bytes(b"untrusted private details without error keyword")
+            status = candidate.summarize_startup_failure(
+                log, "secret", work / "key", work / "model", 0xC0000135
+            )
+            self.assertIn("missing-windows-dll", status)
+            self.assertIn("0xC0000135", status)
+            self.assertNotIn("untrusted private details", status)
+
+    def test_success_keeps_real_health_and_completion_gates_and_cleans_process(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = pathlib.Path(temporary)
+            active = []
+            class Running:
+                returncode = None
+                def poll(self):
+                    return None
+                def terminate(self):
+                    active.append("terminated")
+                def wait(self, timeout=None):
+                    active.append("waited")
+                    return 0
+            with (
+                patch.object(candidate.subprocess, "Popen", return_value=Running()),
+                patch.object(candidate, "request_json", side_effect=[
+                    {"status": "ok"}, {"data": [{"id": "test-model"}]},
+                    {"choices": [{"message": {"content": "teste"}}]},
+                ]),
+            ):
+                proof = candidate.prove_real_offline_inference(
+                    work / "llama-server.exe", work / "model.gguf", "test-model", work
+                )
+            self.assertTrue(proof["real_model_loaded"])
+            self.assertTrue(proof["real_completion"])
+            self.assertEqual(active, ["terminated", "waited"])
+            self.assertFalse((work / "inference-ci-key").exists())
+            self.assertFalse((work / "inference-startup.stderr").exists())
+
     def test_independent_builds_use_exact_clean_source_workspace(self):
         # Same absolute build path in each independent proof, no reused
         # objects, no stale sources, and failure rather than sharing a live dir.
