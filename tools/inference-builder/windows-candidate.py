@@ -70,6 +70,13 @@ def build_windows_engine(lock, work, cache_dir):
     canonical.run([
         "cmake", "-S", str(source), "-B", str(build_dir),
         "-G", "Visual Studio 17 2022", "-A", "x64",
+        # The offline per-user NSIS package does not install the VS runtime.
+        # CMP0091 must be NEW when MSVC is first enabled so the canonical
+        # llama.cpp + GGML targets all link their C/C++ CRT statically.
+        # Otherwise /MD silently adds MSVCP140/VCRUNTIME140 imports and a
+        # correct signed model fails to launch on a clean Windows machine.
+        "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW",
+        "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
         "-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_BUILD_EXAMPLES=OFF",
         "-DLLAMA_BUILD_TOOLS=ON", "-DLLAMA_BUILD_SERVER=ON",
         "-DLLAMA_BUILD_APP=OFF", "-DLLAMA_BUILD_UI=OFF",
