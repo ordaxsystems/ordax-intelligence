@@ -22,7 +22,7 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
                 with self.assertRaisesRegex(candidate.canonical.RuntimeBuildError, "native Windows x64"):
                     candidate.assert_windows_x64(system, machine)
 
-    def test_windows_build_configures_static_msvc_crt_for_every_release_dll(self):
+    def test_windows_multi_dll_build_uses_shared_msvc_runtime(self):
         # Inspect the real CMake argv without downloading the model, fetching
         # the engine, or consuming a Visual Studio compilation slot.
         with tempfile.TemporaryDirectory() as temporary:
@@ -52,15 +52,15 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
             self.assertIn("Visual Studio 17 2022", configure)
             self.assertIn("-DCMAKE_POLICY_DEFAULT_CMP0091=NEW", configure)
             self.assertIn(
-                "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
+                "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>DLL",
                 configure,
             )
             self.assertIn("-DBUILD_SHARED_LIBS=ON", configure)
             self.assertIn("-DGGML_BACKEND_DL=ON", configure)
             self.assertIn("-DGGML_CPU_ALL_VARIANTS=ON", configure)
             self.assertFalse(any(
-                arg.startswith("-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL")
-                or "/MD" in arg for arg in configure
+                arg == "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>"
+                or "/MT" in arg for arg in configure
             ))
             build = run.call_args_list[1].args[0]
             self.assertIn("--config", build)
