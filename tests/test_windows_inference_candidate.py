@@ -4,6 +4,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 BUILDER_DIR = pathlib.Path(__file__).resolve().parents[1] / "tools" / "inference-builder"
 sys.path.insert(0, str(BUILDER_DIR))
@@ -20,6 +21,51 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
             with self.subTest(system=system, machine=machine):
                 with self.assertRaisesRegex(candidate.canonical.RuntimeBuildError, "native Windows x64"):
                     candidate.assert_windows_x64(system, machine)
+
+    def test_windows_build_configures_static_msvc_crt_for_every_release_dll(self):
+        # Inspect the real CMake argv without downloading the model, fetching
+        # the engine, or consuming a Visual Studio compilation slot.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            revision = "7ab4ee7baad2d920464cbacfad4f4b07cf111fd2"
+            mock_version = type("VersionResult", (), {
+                "returncode": 0, "stdout": "llama.cpp " + revision[:8],
+                "stderr": "",
+            })()
+            with (
+                patch.object(candidate.canonical, "prepare_engine_mirror",
+                             return_value=root / "mirror"),
+                patch.object(candidate.canonical, "checkout_engine"),
+                patch.object(candidate.canonical, "run") as run,
+                patch.object(candidate.canonical, "deterministic_env",
+                             return_value={"SOURCE_DATE_EPOCH": "1"}),
+                patch.object(candidate, "verify_built_files", return_value=[]),
+                patch.object(candidate.subprocess, "run", return_value=mock_version),
+            ):
+                candidate.build_windows_engine(
+                    {"engine": {"commit": revision}}, root / "work", root / "cache"
+                )
+            self.assertEqual(run.call_count, 2)
+            configure = run.call_args_list[0].args[0]
+            self.assertEqual(configure[:2], ["cmake", "-S"])
+            self.assertIn("-G", configure)
+            self.assertIn("Visual Studio 17 2022", configure)
+            self.assertIn("-DCMAKE_POLICY_DEFAULT_CMP0091=NEW", configure)
+            self.assertIn(
+                "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
+                configure,
+            )
+            self.assertIn("-DBUILD_SHARED_LIBS=ON", configure)
+            self.assertIn("-DGGML_BACKEND_DL=ON", configure)
+            self.assertIn("-DGGML_CPU_ALL_VARIANTS=ON", configure)
+            self.assertFalse(any(
+                arg.startswith("-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL")
+                or "/MD" in arg for arg in configure
+            ))
+            build = run.call_args_list[1].args[0]
+            self.assertIn("--config", build)
+            self.assertIn("Release", build)
+            self.assertIn("llama-server", build)
 
     def test_independent_builds_use_exact_clean_source_workspace(self):
         # Same absolute build path in each independent proof, no reused
