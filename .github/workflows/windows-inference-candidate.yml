@@ -20,7 +20,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: ordaxsystems/ordax-os
-          ref: c174ecac498c10253b4f467779ea173de6a4edb3
+          # Exact OS First Run reconciliation with the canonical Aura lock
+          # and LF-protected raw proof inputs; no moving branch reference.
+          ref: b75fcc28043be3a0097569d67dd45df428469e66
           path: _upstream/ordax-os
           persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
