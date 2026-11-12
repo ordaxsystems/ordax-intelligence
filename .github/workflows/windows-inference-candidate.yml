@@ -20,7 +20,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: ordaxsystems/ordax-os
-          ref: c174ecac498c10253b4f467779ea173de6a4edb3
+          # Exact OS main revision with the current canonical Aura source-lock;
+          # the former c174ec source lock differed from the Desktop consumer.
+          ref: 7bc8ecbabb377b1e22726e5301bfe7ec028fd6af
           path: _upstream/ordax-os
           persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6

@@ -206,6 +206,11 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
     def test_independent_windows_ci_requires_complete_multivariant_hash_equivalence(self):
         workflow = (BUILDER_DIR.parents[1] / ".github" / "workflows"
                     / "windows-inference-candidate.yml").read_text(encoding="utf-8")
+        # Prove that manual candidate generation uses one immutable OS lock
+        # instead of a moving main or the older source-import fixture.
+        self.assertRegex(workflow, r"(?m)^          ref: [0-9a-f]{40}$")
+        self.assertIn("repository: ordaxsystems/ordax-os", workflow)
+        self.assertNotIn("ref: main", workflow)
         self.assertIn("$firstHashes.Count -lt 9", workflow)
         self.assertIn("$firstHashes.Count -ne $secondHashes.Count", workflow)
         self.assertIn("($firstHashes -join ';') -cne ($secondHashes -join ';')", workflow)
