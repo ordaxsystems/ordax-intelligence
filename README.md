@@ -2,6 +2,12 @@
 
 Fonte canônica do **código reutilizável do motor de inteligência e inferência** do OrdaX. A substituição das implementações ainda rastreadas no OS depende do cutover de distribuição. O código do sistema, autorização, Memory persistente, Supervisor, composição Native, entrega assinada e rollback pertencem ao [ordax-os](https://github.com/ordaxsystems/ordax-os). As interfaces da Aura pertencem ao [ordax-surface](https://github.com/ordaxsystems/ordax-surface) e/ou [ordax-apps](https://github.com/ordaxsystems/ordax-apps).
 
+## Como Intelligence entra no produto
+
+Este repo produz o núcleo reutilizável. A composição Native seleciona a revisão exata pelo contrato/pin do `ordax-os`; Desktop, Surface e Creator não mantêm uma integração paralela do motor. A Aura consome capacidades autorizadas, enquanto estado, lifecycle e autoridade continuam no OS.
+
+Uma revisão compatível pode avançar aqui independentemente e só precisa de adoção cross-repo quando um novo candidato OrdaX realmente for composto. [Regra canônica de composição](https://github.com/ordaxsystems/ordax-os/blob/main/docs/DEVELOPMENT-WORKFLOW.md#integração-multi-repositório--composição-do-produto-2026-11-13).
+
 ## Próxima evolução canônica — Aura com inteligência contextual
 
 A **Aura** é a experiência de conversação (`ordax-surface`/`ordax-apps`); o **Intelligence** é o núcleo consultivo e de inferência que ela consome. Torná-la útil para conhecer apps, Spaces, documentos e estado vivo não é apenas treinar o GGUF: exige contexto **verificado pelo OS**, recuperação de conhecimento (RAG), avaliação de qualidade e ações por gateways autorizados.
