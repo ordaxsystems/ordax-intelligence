@@ -1,5 +1,6 @@
 """Windows inference builder regression: no local toolchain or GGUF download required."""
 import importlib.util
+import json
 import pathlib
 import sys
 import tempfile
