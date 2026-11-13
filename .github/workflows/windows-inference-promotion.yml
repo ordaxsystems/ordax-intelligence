@@ -1,0 +1,124 @@
+name: Promote proven Windows Local AI engine
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'release/windows-inference-candidate.json'
+      - '.github/workflows/windows-inference-promotion.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  promote-proven-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Validate immutable promotion authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, re
+          p = json.loads(pathlib.Path("release/windows-inference-candidate.json").read_text())
+          assert p["$schema"] == "ordax.intelligence-windows-engine-promotion/1"
+          assert p["status"] == "proven-unsigned-candidate"
+          assert p["activation_authorized"] is False
+          assert p["signed_release"] is False
+          for key in ("engine_source_commit","builder_commit","proof_head_commit","artifact_sha256"):
+              assert re.fullmatch(r"[0-9a-f]{40}" if key != "artifact_sha256" else r"[0-9a-f]{64}", p[key])
+          assert isinstance(p["proof_run_id"], int) and p["proof_run_id"] > 0
+          assert isinstance(p["artifact_id"], int) and p["artifact_id"] > 0
+          assert re.fullmatch(r"[A-Za-z0-9._-]+", p["release_tag"])
+          assert re.fullmatch(r"[A-Za-z0-9._-]+\.zip", p["release_asset"])
+          PY
+      - name: Fetch exact successful proof artifact without rebuilding
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_ENV"
+          import json
+          p=json.load(open("release/windows-inference-candidate.json"))
+          for key in ("proof_run_id","artifact_id","artifact_name","artifact_sha256","proof_head_commit","release_tag","release_asset"):
+              print("ORDAX_"+key.upper()+"="+str(p[key]))
+          PY
+          run_json="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$ORDAX_PROOF_RUN_ID")"
+          test "$(jq -r .conclusion <<<"$run_json")" = success
+          test "$(jq -r .head_sha <<<"$run_json")" = "$ORDAX_PROOF_HEAD_COMMIT"
+          artifact_json="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ORDAX_ARTIFACT_ID")"
+          test "$(jq -r .name <<<"$artifact_json")" = "$ORDAX_ARTIFACT_NAME"
+          test "$(jq -r .workflow_run.id <<<"$artifact_json")" = "$ORDAX_PROOF_RUN_ID"
+          test "$(jq -r .workflow_run.head_sha <<<"$artifact_json")" = "$ORDAX_PROOF_HEAD_COMMIT"
+          test "$(jq -r .expired <<<"$artifact_json")" = false
+          test "$(jq -r .digest <<<"$artifact_json")" = "sha256:$ORDAX_ARTIFACT_SHA256"
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ORDAX_ARTIFACT_ID/zip" > "$ORDAX_RELEASE_ASSET"
+          echo "$ORDAX_ARTIFACT_SHA256  $ORDAX_RELEASE_ASSET" | sha256sum --check --strict
+      - name: Verify candidate receipt and exact ZIP inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, pathlib, zipfile, os
+          asset=pathlib.Path(os.environ["ORDAX_RELEASE_ASSET"])
+          with zipfile.ZipFile(asset) as z:
+              names=z.namelist()
+              if len(names) != len(set(names)) or any(n.startswith(("/", "\\")) or ".." in pathlib.PurePosixPath(n).parts for n in names):
+                  raise SystemExit("unsafe or duplicate candidate ZIP member")
+              if "candidate-receipt.json" not in names:
+                  raise SystemExit("candidate receipt missing")
+              receipt=json.loads(z.read("candidate-receipt.json"))
+              if receipt.get("$schema") != "prototype-ordax.windows-inference-candidate/1":
+                  raise SystemExit("unexpected candidate receipt schema")
+              if receipt.get("activation_authorized") is not False or receipt.get("signed_release") is not False:
+                  raise SystemExit("candidate unexpectedly carries activation/release authority")
+              if receipt.get("model_bytes_included") is not False or receipt.get("proof",{}).get("real_model_loaded") is not True or receipt.get("proof",{}).get("real_completion") is not True:
+                  raise SystemExit("candidate lacks real offline inference proof")
+              files=receipt.get("files")
+              if not isinstance(files,list) or len(files) < 9:
+                  raise SystemExit("candidate engine inventory incomplete")
+              expected={"candidate-receipt.json"}
+              for entry in files:
+                  name=entry["name"]
+                  member="engine/"+name
+                  expected.add(member)
+                  data=z.read(member)
+                  if len(data) != entry["size_bytes"] or hashlib.sha256(data).hexdigest() != entry["sha256"]:
+                      raise SystemExit("candidate engine member mismatch: "+name)
+              if set(names) != expected:
+                  raise SystemExit("candidate ZIP contains undeclared members")
+          print("WINDOWS_ENGINE_PROVEN_ZIP=PASS")
+          PY
+      - name: Publish immutable unsigned prerelease asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$ORDAX_RELEASE_TAG" > release.json 2>/dev/null; then
+            asset_id="$(jq -r --arg name "$ORDAX_RELEASE_ASSET" '.assets[] | select(.name==$name) | .id' release.json)"
+            test -n "$asset_id" -a "$asset_id" != null
+            digest="$(gh api "/repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" --jq .digest)"
+            test "$digest" = "sha256:$ORDAX_ARTIFACT_SHA256"
+            echo "WINDOWS_ENGINE_PRERELEASE=ALREADY_EXACT"
+            exit 0
+          fi
+          gh release create "$ORDAX_RELEASE_TAG" "$ORDAX_RELEASE_ASSET#Proven unsigned Windows Local AI engine" \
+            --target "$ORDAX_PROOF_HEAD_COMMIT" \
+            --prerelease \
+            --title "Windows Local AI engine candidate $ORDAX_RELEASE_TAG" \
+            --notes "Unsigned, non-activating Windows engine bytes proven by workflow run $ORDAX_PROOF_RUN_ID. Promotion reuses the exact proven ZIP; no rebuild occurs."
+          release_json="$(gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$ORDAX_RELEASE_TAG")"
+          asset_id="$(jq -r --arg name "$ORDAX_RELEASE_ASSET" '.assets[] | select(.name==$name) | .id' <<<"$release_json")"
+          test -n "$asset_id" -a "$asset_id" != null
+          digest="$(gh api "/repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" --jq .digest)"
+          test "$digest" = "sha256:$ORDAX_ARTIFACT_SHA256"
+          echo "WINDOWS_ENGINE_PRERELEASE=PUBLISHED_EXACT"

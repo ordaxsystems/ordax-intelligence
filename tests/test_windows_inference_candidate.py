@@ -313,6 +313,36 @@ class WindowsInferenceCandidateTest(unittest.TestCase):
         )[1].split("with:", 1)[0]
         self.assertIn("if: github.event_name == 'workflow_dispatch'", upload)
 
+    def test_proven_windows_candidate_promotion_reuses_exact_artifact_without_rebuild(self):
+        root = BUILDER_DIR.parents[1]
+        promotion = json.loads(
+            (root / "release" / "windows-inference-candidate.json").read_text(encoding="utf-8")
+        )
+        workflow = (
+            root / ".github" / "workflows" / "windows-inference-promotion.yml"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(promotion["$schema"], "ordax.intelligence-windows-engine-promotion/1")
+        self.assertEqual(promotion["proof_run_id"], 43309006398)
+        self.assertEqual(promotion["artifact_id"], 13985193466)
+        self.assertEqual(
+            promotion["artifact_sha256"],
+            "21680ead38fbbd34848826badb1ec30ee489b5a8c25fca29deb9d1da74e2cc29",
+        )
+        self.assertEqual(promotion["proof_head_commit"], "20ffa79651401b2e03732f3878025bbd30b4b52e")
+        self.assertEqual(promotion["builder_commit"], "70fc05715e1eb99a43d513caec9f4ac13fbcb1f3")
+        self.assertFalse(promotion["activation_authorized"])
+        self.assertFalse(promotion["signed_release"])
+        self.assertIn("actions: read", workflow)
+        self.assertIn("contents: write", workflow)
+        self.assertIn("actions/artifacts/$ORDAX_ARTIFACT_ID/zip", workflow)
+        self.assertIn("sha256sum --check --strict", workflow)
+        self.assertIn("gh release create", workflow)
+        self.assertIn("--prerelease", workflow)
+        self.assertIn("candidate-receipt.json", workflow)
+        self.assertNotIn("windows-candidate.py", workflow)
+        self.assertNotIn("cmake", workflow.lower())
+        self.assertNotIn("workflow_dispatch:", workflow)
+
     def test_real_proof_must_use_same_os_owned_model_lock_and_no_authority(self):
         source = (BUILDER_DIR / "windows-candidate.py").read_text(encoding="utf-8")
         self.assertIn("canonical.load_source_lock()", source)
