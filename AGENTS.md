@@ -2,6 +2,18 @@
 
 Este repositório é a fonte canônica do código **reutilizável** de Intelligence/Model Router/inferência. Leia, nesta ordem, `README.md`, **`docs/plans/INTELLIGENCE-001-AURA-CONTEXTUAL-INTELLIGENCE.md`**, `docs/ARCHITECTURE.md`, `docs/OWNERSHIP.md`, `docs/MIGRATION.md`, `docs/ENGINE-BUILD.md` e `docs/ARTIFACTS.md` antes de alterar source, release ou fronteiras.
 
+## Integração canônica no produto — 13/11/2026
+
+`ordax-intelligence` é **producer do código/artefatos reutilizáveis de Intelligence**. Ele não é compositor do Desktop, Surface ou OS.
+
+- A adoção Native ocorre pelo pin/contrato canônico mantido no `ordax-os`; não criar pins paralelos em Desktop/Surface/Apps.
+- Surface/Aura consomem ports/contexto autorizados, não importam o motor diretamente como autoridade sistêmica.
+- Mudança compatível no Intelligence pode ser integrada aqui sem cascata de PRs; o OS adota nova revisão quando um candidato realmente precisar dela.
+- Desktop e Creator consomem a composição resultante, não este repo diretamente.
+- Não copiar estado/Memory/grants/lifecycle do OS para simplificar integração.
+
+Regra transversal: [`ordax-os/docs/DEVELOPMENT-WORKFLOW.md`](https://github.com/ordaxsystems/ordax-os/blob/main/docs/DEVELOPMENT-WORKFLOW.md#integração-multi-repositório--composição-do-produto-2026-11-13), ADR-031.
+
 ## Ownership e contratos
 
 - Use exclusivamente as portas públicas `ordax.intelligence/1`, `ordax.model-router/1`, `ordax.local-ai/1`. Seus validadores são injetados pelo `ordax-os`; jamais replique aqui sua autoridade.
