@@ -1,7 +1,7 @@
 # INTELLIGENCE-001 — Aura com inteligência contextual do OrdaX
 
 **Status:** plano canônico da evolução do **produtor `ordax-intelligence`**. A F0 tem testes integrados com contexto e segurança em fixtures; a qualidade com modelo real e o Windows físico ainda não foram avaliados. Evidência: [F0-BASELINE](../evidence/INTELLIGENCE-001-F0-BASELINE.md). As fases F1–F5 seguem pendentes.
-**Data-base:** 2026-11-01.
+**Data-base funcional:** 2026-11-01. **Higiene documental atualizada em 2026-11-13:** SHAs/pins operacionais não são copiados para este plano; devem ser lidos do contrato canônico vigente no `ordax-os`.
 **Escopo deste repositório:** seleção/organização de contexto, raciocínio consultivo, RAG no consumidor e integração do modelo local por portas verificadas.
 **Objetivo:** a Aura compreender os apps realmente disponíveis, estado do OS, documentos, Space/projeto e memória autorizada; propor próximos passos úteis sem inventar capacidades nem obter autoridade por texto do modelo.
 
@@ -149,7 +149,7 @@ A composição Native do OS já usa a preferência regional `regional.locale` pa
 ## 8. Bloqueios de integração descobertos durante a F0 (2026-11-01)
 
 - **Saturação antes do produtor:** o OS pode omitir `ordax-application-catalog`/detalhes quando o total canônico de contexto está cheio. O owner do `ordax-os` deve corrigir a composição/reserva de espaço e provar inclusão do conhecimento verificado, sem criar segunda fonte de verdade. O produtor não pode inferir apps com informação ausente.
-- **Adoção ainda não efetivada:** `ordax-os/main/docs/contracts/intelligence-source.json` continua fixado em `a39c8ddc…`, com `cutover_complete=false` e `activation_authorized=false`. Não promover status por CI do produtor.
+- **Adoção ainda não efetivada:** o contrato canônico `ordax-os/docs/contracts/intelligence-source.json` continua sendo a única autoridade para a revisão portátil realmente consumida. Na revalidação de 13/11/2026 ele permanece `status=integration-candidate`, `cutover_complete=false` e `activation_authorized=false`; o campo `source_commit` é deliberadamente móvel entre adoções e **deve ser lido do contrato vigente**, não deste plano. Não promover status por CI do produtor nem usar um SHA histórico como instrução operacional.
 - **Prova física:** Windows autorizado foi inspecionado sem serviço ativo de inferência nas portas/processos consultados. F0 de qualidade real permanece pendente de modelo/engine aprovados e execução local documentada.
 
 O produtor possui agora uma orientação explícita de abstenção quando não houver dados autorizados, quando o contexto estiver truncado ou quando uma ação não tiver sido realizada. Isso é regra enviada ao modelo, **não prova semântica**. Consulte [F0-BASELINE](../evidence/INTELLIGENCE-001-F0-BASELINE.md). Estes gates pertencem ao owner OS; não fazer implementação paralela.
