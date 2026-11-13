@@ -32,13 +32,16 @@ A ferramenta observacional `tools/benchmarks/local_http.py` registra latência e
 
 A implementação portátil `src/local-ai/completion-stream.mjs` agora recusa `delta.tool_call_id`, `delta.refusal`, campos de autoridade no `choice` e `delta.role` diferente de `assistant` (inclusive vazio/nulo). Antes, alguns desses campos eram ignorados pelo parser SSE, embora a geração buffered já adotasse uma fronteira mais estrita. O teste HTTP loopback em `tests/upstream/test_local_ai_loopback_http.mjs` cobre oito variações e exige ausência de deltas provisórios. Isso **não** autoriza ferramentas, acesso a arquivos ou execução de ações; apenas mantém resposta consultiva e rejeita envelopes inesperados.
 
-A [PR OS #2282](https://github.com/ordaxsystems/ordax-os/pull/2282) integrou o hash exato após aprovar os sete pipelines. A CI `test:consumer` valida agora o lock integrado em `ordax-os@b1d287b3deb1e3aca9b84d465ccd4d96ca6891a8`, sem aceitar fonte flutuante. O source continua `integration-candidate`, sem habilitar cutover, publicação ou boot da Base Buildroot. Mantenha os contratos no OS e os oito blobs no seu único lock.
+A [PR OS #2282](https://github.com/ordaxsystems/ordax-os/pull/2282) integrou o hash exato após aprovar os sete pipelines. A CI `test:consumer` valida o lock imutável selecionado pelo workflow, sem aceitar fonte flutuante. O source continua `integration-candidate`, sem habilitar cutover, publicação ou boot da Base Buildroot. Mantenha os contratos no OS e derive o grafo exclusivamente dos `source_paths` do seu único lock; não preserve uma contagem histórica como contrato paralelo.
 
 ## Evolução independente do source portátil sem ativação implícita
 
-O gate `npm run test:consumer` valida o **commit Git imutável e os oito blobs**
-referenciados pelo lock único do `ordax-os`, não os arquivos de trabalho
-da revisão `HEAD` do Intelligence. A revisão atual do Intelligence continua
+O gate `npm run test:consumer` valida o **commit Git imutável e todos os
+`source_paths` declarados pelo contrato vigente do `ordax-os`**, não os
+arquivos de trabalho da revisão `HEAD` do Intelligence. Na revalidação de
+13/11/2026, o contrato contém nove entradas: oito módulos sob `src/` e o
+builder técnico `tools/inference-builder/build.py`; a contagem não deve ser
+copiada para scripts como autoridade paralela. A revisão atual do Intelligence continua
 passando por `npm run ci`, regressões de compatibilidade e verificação do pacote
 source-only; uma nova implementação nesta revisão pode avançar sem modificar
 o snapshot antigo que o OS realmente consome.
@@ -54,7 +57,7 @@ ou inferência em hardware real.
 
 ## Prevenção de drift entre repositórios
 
-A CI independente verifica o commit fixado do OS em `.github/workflows/ci.yml` e executa `npm run test:consumer` contra o **único** `docs/contracts/intelligence-source.json` no checkout de OS. O gate confirma os três ports, os oito Git blobs (arquivo atual e tree do commit referenciado), ancestralidade do pin, flags não ativantes e checkout OS sem alteração local do lock. A revisão do OS é *imutável* em cada execução, mas deve ser deliberadamente reconciliada quando contratos canônicos mudarem; nunca substituir pelo `main` flutuante. Esse gate é source-only, sem afirmar boot, instalação ou assinatura.
+A CI independente verifica o commit fixado do OS em `.github/workflows/ci.yml` e executa `npm run test:consumer` contra o **único** `docs/contracts/intelligence-source.json` no checkout de OS. O gate confirma os três ports, **todos os `source_paths` do contrato vigente** (arquivo atual e tree do commit referenciado), ancestralidade do pin, flags não ativantes e checkout OS sem alteração local do lock. A revisão do OS é *imutável* em cada execução, mas deve ser deliberadamente reconciliada quando contratos canônicos mudarem; nunca substituir pelo `main` flutuante. Esse gate é source-only, sem afirmar boot, instalação ou assinatura.
 
 ## Deadline de inferência: adaptadores HTTP não cooperativos (candidato)
 
@@ -128,7 +131,7 @@ A verificação do arquivo de handoff passa a conferir a igualdade byte a byte d
 
 ## Remoção de manifest duplicado — SSOT (2026-11-01)
 
-A auditoria identificou `docs/source-lock.json` no repositório Intelligence como um **manifest estático antigo**, contendo `origin_commit=45ab6648`, seis hashes de source e hashes de testes. Ele não era consumido pelos scripts de CI, empacotamento, builder nem pelos validadores do consumidor; competia conceitualmente com o pin atual no OS. Foi removido para que o único lock de origem efetivamente consumido permaneça em `ordax-os/docs/contracts/intelligence-source.json` (observado na `ordax-os/main` com `source_commit=a39c8ddcba1ac466a3697e03c20e0a8f186e4fc8`). O lock **distinto** do motor/modelo continua exclusivamente em `ordax-os/system/services/local-ai/source-lock.json`.
+A auditoria identificou `docs/source-lock.json` no repositório Intelligence como um **manifest estático antigo**, contendo `origin_commit=45ab6648`, seis hashes de source e hashes de testes. Ele não era consumido pelos scripts de CI, empacotamento, builder nem pelos validadores do consumidor; competia conceitualmente com o pin atual no OS. Foi removido para que o único lock de origem efetivamente consumido permaneça em `ordax-os/docs/contracts/intelligence-source.json`. O `source_commit=a39c8ddcba1ac466a3697e03c20e0a8f186e4fc8` citado na evidência original era **somente o snapshot observado em 01/11/2026**; a revisão corrente deve ser lida do contrato vigente e não deste histórico. O lock **distinto** do motor/modelo continua exclusivamente em `ordax-os/system/services/local-ai/source-lock.json`.
 
 O gate `npm run check` agora reprova qualquer `source-lock.json` de primeira parte, inclusive sob `src/`, `docs/`, `tools/` ou a raiz, sem inspecionar o checkout de OS `_upstream`, dependências ou metadados gerados em `dist`. Testes negativos garantem a rejeição e a aceitação do lock no upstream. Nenhuma implementação de inferência, porta OS, hash consumido, builder, release ou regra de ativação foi modificada: `integration-candidate` segue sem cutover. A remoção de código ainda duplicado no **OS em execução** depende da transação canônica do owner do OS, não de apagar código de produto prematuramente.
 
