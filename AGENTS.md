@@ -1,6 +1,6 @@
 # AGENTS.md — OrdaX Intelligence
 
-Este repositório é a fonte canônica do código **reutilizável** de Intelligence/Model Router/inferência. Leia, nesta ordem, `README.md`, **`docs/plans/INTELLIGENCE-001-AURA-CONTEXTUAL-INTELLIGENCE.md`**, `docs/ARCHITECTURE.md`, `docs/OWNERSHIP.md`, `docs/MIGRATION.md`, `docs/ENGINE-BUILD.md` e `docs/ARTIFACTS.md` antes de alterar source, release ou fronteiras.
+Este repositório é a fonte canônica do código **reutilizável** de Intelligence/Model Router/inferência. A leitura é proporcional ao impacto: para uma correção localizada, leia este `AGENTS.md`, o source/teste afetado e o contrato diretamente relacionado. Consulte `README.md`, o plano Intelligence, arquitetura/ownership/migração/build/artifacts somente quando a mudança tocar essas fronteiras. Não transformar uma edição simples em auditoria documental.
 
 ## Integração canônica no produto — 13/11/2026
 
