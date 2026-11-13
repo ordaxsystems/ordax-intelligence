@@ -113,11 +113,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          verify_release_asset() {
+            local release_json="$1"
+            local count asset_url
+            count="$(jq -r --arg name "$ORDAX_RELEASE_ASSET" '[.assets[] | select(.name==$name)] | length' <<<"$release_json")"
+            test "$count" = 1
+            asset_url="$(jq -r --arg name "$ORDAX_RELEASE_ASSET" '.assets[] | select(.name==$name) | .browser_download_url' <<<"$release_json")"
+            test -n "$asset_url" -a "$asset_url" != null
+            curl --fail --location --silent --show-error \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              "$asset_url" --output released-candidate.zip
+            echo "$ORDAX_ARTIFACT_SHA256  released-candidate.zip" | sha256sum --check --strict
+            rm -f released-candidate.zip
+          }
           if gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$ORDAX_RELEASE_TAG" > release.json 2>/dev/null; then
-            asset_id="$(jq -r --arg name "$ORDAX_RELEASE_ASSET" '.assets[] | select(.name==$name) | .id' release.json)"
-            test -n "$asset_id" -a "$asset_id" != null
-            digest="$(gh api "/repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" --jq .digest)"
-            test "$digest" = "sha256:$ORDAX_ARTIFACT_SHA256"
+            verify_release_asset "$(cat release.json)"
             echo "WINDOWS_ENGINE_PRERELEASE=ALREADY_EXACT"
             exit 0
           fi
@@ -127,8 +137,5 @@ jobs:
             --title "Windows Local AI engine candidate $ORDAX_RELEASE_TAG" \
             --notes "Unsigned, non-activating Windows engine bytes proven by workflow run $ORDAX_PROOF_RUN_ID. Promotion reuses the exact proven ZIP; no rebuild occurs."
           release_json="$(gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$ORDAX_RELEASE_TAG")"
-          asset_id="$(jq -r --arg name "$ORDAX_RELEASE_ASSET" '.assets[] | select(.name==$name) | .id' <<<"$release_json")"
-          test -n "$asset_id" -a "$asset_id" != null
-          digest="$(gh api "/repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" --jq .digest)"
-          test "$digest" = "sha256:$ORDAX_ARTIFACT_SHA256"
+          verify_release_asset "$release_json"
           echo "WINDOWS_ENGINE_PRERELEASE=PUBLISHED_EXACT"
