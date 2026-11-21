@@ -2,7 +2,17 @@ name: Intelligence CI
 on:
   push:
     branches: [main, 'feat/**']
+    paths-ignore:
+      - 'URGENTE-LEIA.md'
+      - 'AGENTS.md'
+      - 'README.md'
+      - 'docs/**/*.md'
   pull_request:
+    paths-ignore:
+      - 'URGENTE-LEIA.md'
+      - 'AGENTS.md'
+      - 'README.md'
+      - 'docs/**/*.md'
 permissions:
   contents: read
 jobs:
